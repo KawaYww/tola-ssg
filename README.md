@@ -10,7 +10,7 @@ e.g.,
 - watch changes in multiple files and recompile  
 - provide a local server to preview  
 - to prevent users from typing tedious/repetitive command options, like `typst compile --features html --format html --root ./  --font-path ./ xxx.typ xxx/index.html`
-- run `typst compile ...` and `tailwindcss -i input.css ...` (`tola` comes with built-in Tailwind CSS support out of the box.) (developing in )
+- run `typst compile ...` and `tailwindcss -i input.css ...` (`tola` comes with built-in Tailwind CSS support out of the box.) (developing in `v0.5.0`)
 - deploy the generated blog to github-page/cloudflare-page/vercal-page (developing in `v0.5.0`)
 - provide a small-kernel typst template file, so that most people can customize their own site easily  (developing )
 
