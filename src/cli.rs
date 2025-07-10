@@ -28,15 +28,15 @@ pub struct Cli {
     #[arg(short, long, default_value_t = true)]
     pub minify: bool,
 
-    // enable tailwindcss support
+    /// enable tailwindcss support
     #[arg(long, default_value_t = true)]
     pub tailwind_support: bool,
 
-    // enable tailwindcss support
+    /// enable tailwindcss support
     #[arg(long, default_value = "tailwindcss")]
     pub tailwind_command: String,
 
-    // subcommands
+    /// subcommands
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
