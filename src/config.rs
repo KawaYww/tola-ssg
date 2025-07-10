@@ -35,7 +35,6 @@ pub mod serde_defaults {
 
         pub fn language() -> String { "zh-Hans".into() }   
         pub fn typst_command() -> String { "typst".into() }   
-        pub fn tailwind_command() -> String { "tailwindcss".into() }   
         pub fn root_path() -> PathBuf { "./".into() }
         pub fn content_dir() -> PathBuf { "content".into() }
         pub fn output_dir() -> PathBuf { "public".into() }
@@ -45,6 +44,10 @@ pub mod serde_defaults {
     pub mod serve {
         pub fn interface() -> String { "127.0.0.1".into() }
         pub fn port() -> u16 { 5277 }
+    }
+
+    pub mod tailwind {
+        pub fn command() -> String { "tailwindcss".into() }
     }
 
     pub mod deploy {
@@ -131,16 +134,6 @@ pub struct BuildConfig {
     #[educe(Default = serde_defaults::build::typst_command())]
     pub typst_command: String,
 
-    // enable tailwindcss support
-    #[serde(default = "serde_defaults::r#true")]
-    #[educe(Default = true)]
-    pub tailwind_support: bool,
-
-    // The name of tailwind command
-    #[serde(default = "serde_defaults::build::tailwind_command")]
-    #[educe(Default = serde_defaults::build::tailwind_command())]
-    pub tailwind_command: String,
-
     // Minify the html content
     #[serde(default = "serde_defaults::r#true")]
     #[educe(Default = true)]
@@ -166,6 +159,21 @@ pub struct ServeConfig {
     #[serde(default = "serde_defaults::r#true")]
     #[educe(Default = true)]
     pub watch: bool,
+}
+// `[tailwind]` in toml
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Default)]
+#[serde(deny_unknown_fields)]
+pub struct TailwindConfig {
+    // whether to enable tailwindcss support
+    #[serde(default = "serde_defaults::r#true")]
+    #[educe(Default = true)]
+    pub enable: bool,
+
+    // The name of tailwind command
+    #[serde(default = "serde_defaults::tailwind::command")]
+    #[educe(Default = serde_defaults::tailwind::command())]
+    pub command: String,
 }
 
 // `[deploy]` in toml
@@ -256,6 +264,9 @@ pub struct SiteConfig {
     pub serve: ServeConfig,
 
     #[serde(default)]
+    pub tailwind: TailwindConfig,
+
+    #[serde(default)]
     pub deploy: DeployConfig,
 
     #[serde(default)]
@@ -283,8 +294,7 @@ impl SiteConfig {
         self.update_path_with_root(&cli.root, cli);
         
         self.build.minify = cli.minify;
-        self.build.tailwind_support = cli.tailwind_support;
-        self.build.tailwind_command = cli.tailwind_command.to_owned();
+        self.tailwind.enable = cli.tailwind_support;
 
         if let Some(subcommand)  = &cli.command { match subcommand {
             Commands::Init { name } => {
@@ -349,7 +359,7 @@ mod tests {
     "#;
 
     #[test]
-    fn parse_config() {
+    fn parse() {
         let config = SiteConfig::from_str(SAMPLE_CONFIG).unwrap();
         
         assert_eq!(config.base.title, "我的博客");
@@ -368,11 +378,12 @@ mod tests {
         let config = SiteConfig::from_str(config_str).unwrap();
         
         assert_eq!(config.build.output_dir, PathBuf::from("public"));
-        assert_eq!(config.build.tailwind_support, true);
+        assert_eq!(config.build.minify, true);
+        assert_eq!(config.tailwind.enable, true);
     }
 
     #[test]
-    fn config_validation() {
+    fn validation() {
         let invalid_url = r#"
             [base]
             title = "测试"

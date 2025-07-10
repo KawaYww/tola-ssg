@@ -19,7 +19,9 @@ fn check_typst_installed(config: &SiteConfig) -> Result<()> {
 }
 
 fn check_tailwind_installed(config: &SiteConfig) -> Result<()> {
-    let command = config.build.tailwind_command.as_str();
+    if !config.tailwind.enable { return Ok(()) }
+    
+    let command = config.tailwind.command.as_str();
 
     Command::new(command)
         .arg("-h")

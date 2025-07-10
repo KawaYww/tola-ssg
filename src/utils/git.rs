@@ -36,7 +36,7 @@ pub fn commit_all(repo: &Repository) -> Result<()> {
         gix::commit::NO_PARENT_IDS
     )?;
     
-    log!("Initer", "commit id for blob: {initial_commit_id:?}");
+    log!("initer", "commit id for blob: {initial_commit_id:?}");
     
     Ok(())
 }

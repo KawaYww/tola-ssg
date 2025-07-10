@@ -34,10 +34,6 @@ pub struct Cli {
     #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
     pub tailwind_support: bool,
 
-    /// enable tailwindcss support
-    #[arg(long, default_value = "tailwindcss")]
-    pub tailwind_command: String,
-
     /// subcommands
     #[command(subcommand)]
     pub command: Option<Commands>,

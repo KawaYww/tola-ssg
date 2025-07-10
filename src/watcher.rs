@@ -4,25 +4,22 @@ use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::{path::PathBuf, time::{Duration, Instant}};
 use tokio::sync::oneshot;
 
+#[rustfmt::skip]
 pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: oneshot::Receiver<()>) -> Result<()> {
-    if !config.serve.watch {
-        return Ok(());
-    }
+    if !config.serve.watch { return Ok(()) }
     
     let (tx, rx) = std::sync::mpsc::channel();
     let mut watcher =
         notify::recommended_watcher(tx).context("[watcher] Failed to create file watcher")?;
 
-    watcher
-        .watch(&config.build.content_dir, RecursiveMode::Recursive)
-        .context(format!(
+    watcher.watch(&config.build.content_dir, RecursiveMode::Recursive)
+        .with_context(|| format!(
             "[watcher] Failed to watch directory: {}",
             config.build.content_dir.display()
         ))?;
 
-    watcher
-        .watch(&config.build.assets_dir, RecursiveMode::Recursive)
-        .context(format!(
+    watcher.watch(&config.build.assets_dir, RecursiveMode::Recursive)
+        .with_context(|| format!(
             "[watcher] Failed to watch directory: {}",
             config.build.assets_dir.display()
         ))?;
@@ -30,25 +27,18 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
 
-    log!(
-        "watcher",
-        "Watching for changes in {}",
-        config.build.content_dir.display()
+    log!("watcher",
+        "Watching for changes in {}", config.build.content_dir.display()
     );
 
     for res in rx {
         match res {
-            Ok(event) => {
-                if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
-                    last_event_time = Instant::now();
-                    std::thread::spawn(move || {
-                        match handle_files(&event.paths, config) {
-                            Ok(()) => (),
-                            Err(e) => log!("watcher", "Error: {:?}", e),
-                        }
-
-                    });
-                }
+            Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
+                last_event_time = Instant::now();
+                std::thread::spawn(move || match handle_files(&event.paths, config) {
+                    Err(e) => log!("watcher", "Error: {:?}", e),
+                    Ok(()) => (),
+                });
             },
             Err(e) => {
                 log!("watcher", "Error: {:?}", e);

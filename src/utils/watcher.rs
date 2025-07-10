@@ -16,19 +16,16 @@ pub fn copy_assets_in_parallel(files: &[&PathBuf], config: &SiteConfig, should_w
 pub fn process_watched_files(files: &[PathBuf], config: &SiteConfig) -> Result<()> {
     let posts_files: Vec<_> = files
         .par_iter()
-        .filter(|p| p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("typ"))
+        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("typ"))
         .collect();
 
     let assets_files: Vec<_> = files
         .par_iter()
-        .filter(|p| {
-            let is_file = p.is_file();
-            let in_asset = p
-                .strip_prefix(env::current_dir().unwrap())
-                .unwrap()
-                .starts_with(&config.build.assets_dir);
-            is_file && in_asset
-        })
+        .filter(|path|  path
+            .strip_prefix(env::current_dir().unwrap())
+            .unwrap()
+            .starts_with(&config.build.assets_dir)
+        )
         .collect();
 
     if !posts_files.is_empty() { compile_posts_in_parallel(&posts_files, config)? }

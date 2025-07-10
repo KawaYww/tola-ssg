@@ -224,14 +224,14 @@ pub fn compile_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
     let content_dir = &config.build.content_dir;
     let output_dir = &config.build.output_dir;
 
-    let relative_path = post_path
+    let relative_post_path = post_path
         .strip_prefix(content_dir)?
         .to_str()
         .ok_or(anyhow!("Invalid path"))?
         .strip_suffix(".typ")
         .ok_or(anyhow!("Not a .typ file"))?;
 
-    let output_path = output_dir.join(relative_path);
+    let output_path = output_dir.join(relative_post_path);
     fs::create_dir_all(&output_path)?;
 
     let html_path = if post_path.file_name().is_some_and(|p| p == "home.typ") {
@@ -262,20 +262,21 @@ pub fn compile_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
         fs::write(&html_path, content)?;
     }
 
+    log!("content", "{}", relative_post_path);
 
     Ok(())
 }
 
-pub fn copy_asset(path: &Path, config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
+pub fn copy_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
     let assets_dir = &config.build.assets_dir;
     let output_dir = &config.build.output_dir;
 
-    let relative_path = path
+    let relative_asset_path = asset_path
         .strip_prefix(assets_dir)?
         .to_str()
         .ok_or(anyhow!("Invalid path"))?;
 
-    let output_path = output_dir.join(relative_path);
+    let output_path = output_dir.join(relative_asset_path);
 
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)?;
@@ -286,10 +287,11 @@ pub fn copy_asset(path: &Path, config: &SiteConfig, should_wait_until_stable: bo
     }
 
     if should_wait_until_stable {
-        wait_until_stable(path, 5)?;
+        wait_until_stable(asset_path, 5)?;
     }
-    fs::copy(path, &output_path)?;
+    fs::copy(asset_path, &output_path)?;
 
+    log!("assets", "{}", relative_asset_path);
 
     Ok(())
 }
