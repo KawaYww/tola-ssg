@@ -25,7 +25,7 @@ pub fn new_site(root: &Path) -> Result<()> {
     init_default_config(root)?;
     init_site_structure(root)?;
 
-    git::commit_all(&repo)?;
+    git::commit_all(&repo, "initial commit")?;
   
     Ok(())
 }

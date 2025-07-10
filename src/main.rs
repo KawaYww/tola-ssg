@@ -23,10 +23,11 @@ async fn main() -> Result<()> {
     let cli: &'static Cli = Box::leak(Box::new(Cli::parse()));
     let config: &'static SiteConfig = {
         let config_file = cli.root.join(&cli.config);
-        let config =
+        let mut config =
             if config_file.exists() { SiteConfig::from_file(&config_file)? }
-            else { SiteConfig::default() }
-            .update_with_cli(cli);
+            else { SiteConfig::default() };
+        config.update_with_cli(cli);
+        config.validate(cli)?;
         Box::leak(Box::new(config))
     };
 

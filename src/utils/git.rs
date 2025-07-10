@@ -8,7 +8,7 @@
 
 use std::{fs, io::BufWriter, path::Path, process::Command};
 use anyhow::{anyhow, bail, Context, Result};
-use gix::{bstr::BString, index::{entry::{Flags, Mode, Stat}, fs::Metadata, State}, objs::{tree, Tree}, Repository};
+use gix::{bstr::BString, commit::NO_PARENT_IDS, index::{entry::{Flags, Mode, Stat}, fs::Metadata, State}, objs::{tree, Tree}, Repository};
 use crate::{config::SiteConfig, log};
 
 #[derive(Debug, Default)]
@@ -27,7 +27,7 @@ pub fn open_repo(root: &Path) -> Result<Repository> {
     Ok(repo)
 }
 
-pub fn commit_all(repo: &Repository) -> Result<()> {   
+pub fn commit_all(repo: &Repository, message: &str) -> Result<()> {   
     let root = repo.path().parent().unwrap();
     let mut index = State::new(repo.object_hash());
     let tree = build_tree_from_dir(root, repo, &mut index)?;
@@ -39,17 +39,29 @@ pub fn commit_all(repo: &Repository) -> Result<()> {
     };
     index.write_to(&mut buffer, gix::index::write::Options::default())?;
 
-    let initial_tree_id = repo.write_object(&tree)?;
-    let initial_commit_id = repo.commit(
+    let tree_id = repo.write_object(&tree)?;
+    let commit_id = repo.commit(
         "HEAD",
-        "initial commit",
-        initial_tree_id,
-        gix::commit::NO_PARENT_IDS
+        message,
+        tree_id,
+        // gix::commit::NO_PARENT_IDS
+        parent_ids_or_empty(repo)?
     )?;
     
-    log!("initer", "commit id for blob: {initial_commit_id:?}");
+    log!("commit", "In repo `{}`, commit id for blob: {commit_id:?}", root.display());
     
     Ok(())
+}
+
+fn parent_ids_or_empty(repo: &Repository) -> Result<Vec<gix::ObjectId>> {
+    let ids = match repo.find_reference("refs/heads/main") {
+        Err(_) => NO_PARENT_IDS.to_vec(),
+        Ok(refs) => {
+            let target = refs.target();
+            [target.id().to_owned()].to_vec()
+        }
+    };
+    Ok(ids)
 }
 
 pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
@@ -62,23 +74,14 @@ pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
     let token = if token_path == Path::new("") {
         String::new()
     } else {
-        println!("{}", token_path.display());
-        if !token_path.exists() {
-            bail!("The path which defines in [deploy.git.token_path] not exists")
-        }
-        if !token_path.is_file() {
-            bail!("The path which defines in [deploy.git.token_path] is not a file")
-        }
-
-        fs::read_to_string(token_path)?
+        fs::read_to_string(token_path)?.trim().to_owned()
     };
     
-
     let remotes = get_remotes(repo)?;
     let remote_origin_exists =  remotes.iter().any(|remote| remote.name == "origin");
 
+    let remote_url = format!("https://{token}@{}", remote_url_in_config.strip_prefix("https://").context("the rmeote url starts without https").unwrap());
     if !remote_origin_exists {
-        let remote_url = format!("https://{token}@{}", remote_url_in_config.strip_prefix("https").context("the remote url starts without https").unwrap());
         Command::new("git").args(["remote", "add", "origin", remote_url.as_str()]).current_dir(root).output()?;
         Command::new("git")
             .args(["push", "-u", "origin", branch_in_config, if force { "-f" } else { "" } ])
@@ -91,12 +94,17 @@ pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
             bail!("The url in remote `origin` not equal to url in [deploy.git], enable [deploy.force] or reset url manually")
         }
 
-        let remote_url = format!("https://{token}@{}", remote_url_in_config.strip_prefix("https").context("the rmeote url starts without https").unwrap());
-        Command::new("git").args(["remote", "set-url", "origin", remote_url.as_str()]).output()?;
-        Command::new("git")
+        println!("AAA");
+        let a = Command::new("git").args(["remote", "set-url", "origin", remote_url.as_str()]).current_dir(root).output()?;
+        let b = Command::new("git")
             .args(["push", "-u", "origin", branch_in_config, if force { "-f" } else { "" } ])
             .current_dir(root)
             .output()?;
+
+        println!("{}", String::from_utf8(a.stderr)?);
+        println!("{}", String::from_utf8(b.stderr)?);
+        println!("{}", String::from_utf8(a.stdout)?);
+        println!("{}", String::from_utf8(b.stdout)?);
     }
 
     Ok(())

@@ -277,7 +277,6 @@ pub struct SiteConfig {
 impl SiteConfig {
     pub fn from_str(content: &str) -> Result<Self, ConfigError> {
         let config: SiteConfig = toml::from_str(content)?;
-        config.validate()?;
         Ok(config)
     }
 
@@ -290,17 +289,15 @@ impl SiteConfig {
     }
 
     #[rustfmt::skip]
-    pub fn update_with_cli(mut self, cli: &Cli) -> Self {       
+    pub fn update_with_cli(&mut self, cli: &Cli) {
         self.update_path_with_root(&cli.root, cli);
         
         self.build.minify = cli.minify;
         self.tailwind.enable = cli.tailwind_support;
 
         if let Some(subcommand)  = &cli.command { match subcommand {
-            Commands::Init { name } => {
-                if let Some(name) = name {
-                    self.update_path_with_root(&cli.root.join(name), cli);
-                }
+            Commands::Init { name: Some(name) } => {
+                self.update_path_with_root(&cli.root.join(name), cli);
             },
             Commands::Serve { interface, port, watch } => {
                 self.serve.interface = interface.to_owned();
@@ -312,8 +309,6 @@ impl SiteConfig {
             },
             _ => ()
         }}
-
-        self
     }
 
     fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
@@ -322,19 +317,42 @@ impl SiteConfig {
         self.build.output_dir = root.join(&cli.output);
         self.build.assets_dir = root.join(&cli.assets);
 
-        let token_path = &self.deploy.github_provider.token_path;
-        if token_path.is_relative() {
-            self.deploy.github_provider.token_path = root.join(token_path);
+        let token_path = {
+            let path = &self.deploy.github_provider.token_path;
+            let path = shellexpand::tilde(path.to_str().unwrap());
+            PathBuf::from(path.into_owned())
+        };
+
+        self.deploy.github_provider.token_path = if token_path.is_relative() {
+            root.join(token_path)
+        } else {
+            token_path
         }
     }
     
-    fn validate(&self) -> Result<(), ConfigError> {
-        if !self.base.base_url.starts_with("http") {
+    pub fn validate(&self, cli: &Cli) -> Result<(), ConfigError> {
+        let base_url = self.base.base_url.as_str();
+        let token_path = self.deploy.github_provider.token_path.as_path();
+        
+        if !base_url.starts_with("http") {
             return Err(ConfigError::Validation(
-                "`base_url` should start with `http://` or `https://`".into()
+                "[base.base_url] should start with `http://` or `https://`".into()
             ));
+
         }
 
+        if cli.command_is_deploy() && token_path != Path::new("") {
+            if !token_path.exists() {
+                return Err(ConfigError::Validation(
+                    "[deploy.github.token_path] not exists".into()
+                ));
+            }
+            if !token_path.is_file() {
+                return Err(ConfigError::Validation(
+                    "[deploy.github.token_path] is not a file".into()
+                ));
+            }
+        }
         Ok(())
     }
 }

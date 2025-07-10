@@ -17,7 +17,7 @@ fn deploy_github(config: &'static SiteConfig) -> Result<()> {
         git::open_repo(output_dir)?
     };
 
-    git::commit_all(&repo)?;
+    git::commit_all(&repo, "deploy it")?;
     git::push(&repo, config)?;
     
     Ok(())

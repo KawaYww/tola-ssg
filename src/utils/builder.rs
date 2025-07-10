@@ -256,7 +256,7 @@ pub fn compile_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
     }
 
     if config.build.minify {
-        let html_content = fs::read_to_string(&html_path).context("AAA")?;
+        let html_content = fs::read_to_string(&html_path)?;
         let minified_content = minify_html::minify(html_content.as_bytes(), &minify_html::Cfg::new());
         let content = String::from_utf8_lossy(&minified_content).to_string();
         fs::write(&html_path, content)?;
