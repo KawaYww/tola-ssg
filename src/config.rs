@@ -51,14 +51,14 @@ pub mod serde_defaults {
     }
 
     pub mod deploy {
-        pub fn provider() -> String { "git".into() }
+        pub fn provider() -> String { "github".into() }
 
         pub mod github {
             use std::path::PathBuf;
 
-            pub fn remote() -> String { "https://github.com/alice/alice.github.io".into() }
+            pub fn remote_url() -> String { "https://github.com/alice/alice.github.io".into() }
             pub fn branch() -> String { "main".into() }
-            pub fn token_path() -> PathBuf { "~/xxx/xxx/.github-token-in-this-file".into() }
+            pub fn token_path() -> PathBuf { PathBuf::new() }
         }
 
         pub mod cloudflare {
@@ -192,8 +192,8 @@ pub struct DeployConfig {
     pub force: bool,
 
     // The git provider for deployment
-    #[serde(rename = "git", default)]
-    pub git_provider: GithubProvider, 
+    #[serde(rename = "github", default)]
+    pub github_provider: GithubProvider, 
 
     // The cloudflare provider for deployment
     #[serde(rename = "cloudflare", default)]
@@ -209,12 +209,12 @@ pub struct DeployConfig {
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct GithubProvider {
-    // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::github::remote")]
-    #[educe(Default = serde_defaults::deploy::github::remote())]
-    pub remote: String,
+    // The remote_url of generated site repo
+    #[serde(default = "serde_defaults::deploy::github::remote_url")]
+    #[educe(Default = serde_defaults::deploy::github::remote_url())]
+    pub remote_url: String,
 
-    // The provider to use for deployment
+    // The branch of generated site repo
     #[serde(default = "serde_defaults::deploy::github::branch")]
     #[educe(Default = serde_defaults::deploy::github::branch())]
     pub branch: String,
@@ -298,7 +298,9 @@ impl SiteConfig {
 
         if let Some(subcommand)  = &cli.command { match subcommand {
             Commands::Init { name } => {
-                self.update_path_with_root(name, cli);
+                if let Some(name) = name {
+                    self.update_path_with_root(&cli.root.join(name), cli);
+                }
             },
             Commands::Serve { interface, port, watch } => {
                 self.serve.interface = interface.to_owned();
@@ -320,9 +322,9 @@ impl SiteConfig {
         self.build.output_dir = root.join(&cli.output);
         self.build.assets_dir = root.join(&cli.assets);
 
-        let token_path = &self.deploy.git_provider.token_path;
+        let token_path = &self.deploy.github_provider.token_path;
         if token_path.is_relative() {
-            self.deploy.git_provider.token_path = root.join(token_path);
+            self.deploy.github_provider.token_path = root.join(token_path);
         }
     }
     

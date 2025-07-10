@@ -35,9 +35,8 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
         match res {
             Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
                 last_event_time = Instant::now();
-                std::thread::spawn(move || match handle_files(&event.paths, config) {
-                    Err(e) => log!("watcher", "Error: {:?}", e),
-                    Ok(()) => (),
+                std::thread::spawn(move || if let Err(e) = handle_files(&event.paths, config) {
+                    log!("watcher", "Error: {:?}", e);
                 });
             },
             Err(e) => {

@@ -35,10 +35,10 @@ async fn main() -> Result<()> {
     
     check_required_command_installed(config)?;
     
-    if cli.command_is_init() { new_site(&config.build.root_path)? }
-    if cli.command_is_built() { build_site(config)? }
-    if cli.command_is_deploy() { deploy_site(config)? }
-    if cli.command_is_serve() { serve_site(config).await? }
+    if cli.command_is_init() { new_site(&config.build.root_path)?; }
+    if cli.command_is_built() { build_site(config)?; }
+    if cli.command_is_deploy() { deploy_site(config)?; }
+    if cli.command_is_serve() { serve_site(config).await?; }
 
     Ok(())
 }

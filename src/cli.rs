@@ -43,9 +43,9 @@ pub struct Cli {
 pub enum Commands {
     /// Init a template site
     Init {
-        /// the name of site directory
+        /// the name(path) of site directory, related to `root_path`
         #[arg()]
-        name: PathBuf,
+        name: Option<PathBuf>,
     },
     
     /// Serve the site. Rebuild and reload on change automatically

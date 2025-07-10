@@ -1,9 +1,10 @@
 use crate::{config::SiteConfig, log, utils::{builder::{compile_post, copy_asset, process_files}, git}};
 use anyhow::{anyhow, Context, Result};
+use gix::Repository;
 use std::{fs, thread};
 
 #[rustfmt::skip]
-pub fn build_site(config: &'static SiteConfig) -> Result<()> {
+pub fn build_site(config: &'static SiteConfig) -> Result<Repository> {
     let output_dir = &config.build.output_dir;
     let content_dir = &config.build.content_dir;
     let assets_dir = &config.build.assets_dir;
@@ -12,9 +13,9 @@ pub fn build_site(config: &'static SiteConfig) -> Result<()> {
     if output_dir.exists() {
         fs::remove_dir_all(output_dir)
             .with_context(|| format!("[Builder] Failed to clear output directory: {}", output_dir.display()))?;
-
-        git::create_repo(output_dir)?;
     }
+
+    let repo = git::create_repo(output_dir)?;
 
     // Process files in parallel
     thread::scope(|s| {
@@ -38,6 +39,6 @@ pub fn build_site(config: &'static SiteConfig) -> Result<()> {
             "Successfully generated site in: {}", config.build.output_dir.display()
         );
 
-        Ok(())
+        Ok(repo)
     })
 }
