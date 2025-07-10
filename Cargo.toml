@@ -24,7 +24,7 @@ strip = true
 anyhow = "1.0.98"
 which = "8.0.0"
 axum = "0.8.4"
-clap = { version = "4.5.40", features = ["derive"] }
+clap = { version = "4.5.40", features = ["derive", "string"] }
 colored = "3.0.0"
 crossterm = "0.29.0"
 minify-html = "0.16.4"

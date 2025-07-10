@@ -1,9 +1,8 @@
-use crate::{config::SiteConfig, log, utils};
+use crate::{config::SiteConfig, log, utils::watcher::process_watched_files};
 use anyhow::{Context, Result};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::{path::PathBuf, time::{Duration, Instant}};
 use tokio::sync::oneshot;
-
 
 pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: oneshot::Receiver<()>) -> Result<()> {
     if !config.serve.watch {
@@ -43,7 +42,6 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
                 if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
                     last_event_time = Instant::now();
                     std::thread::spawn(move || {
-
                         match handle_files(&event.paths, config) {
                             Ok(()) => (),
                             Err(e) => log!("watcher", "Error: {:?}", e),
@@ -69,10 +67,9 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
 fn should_process_event(event: &Event) -> bool {
     matches!(event.kind, EventKind::Any)
     // matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
-
 }
 
 fn handle_files(paths: &[PathBuf], config: &SiteConfig) -> Result<()> {
     // log!("watcher", "Detected changes in: {:?}", paths);
-    utils::process_watched_files(paths, config).context("Failed to process changed files")
+    process_watched_files(paths, config).context("Failed to process changed files")
 }

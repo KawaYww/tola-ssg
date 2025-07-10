@@ -25,18 +25,20 @@ pub struct Cli {
     pub config: PathBuf,
 
     /// Minify the html content
-    #[arg(short, long, default_value_t = true)]
+    #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
     pub minify: bool,
 
-    // enable tailwindcss support
+    /// enable tailwindcss support
     #[arg(long, default_value_t = true)]
+    /// enable tailwindcss support
+    #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
     pub tailwind_support: bool,
 
-    // enable tailwindcss support
+    /// enable tailwindcss support
     #[arg(long, default_value = "tailwindcss")]
     pub tailwind_command: String,
 
-    // subcommands
+    /// subcommands
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -61,7 +63,7 @@ pub enum Commands {
         port: u16,
 
         /// enable watch
-        #[arg(short, long, default_value_t = true)]
+        #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
         watch: bool,
     },
 
@@ -72,7 +74,7 @@ pub enum Commands {
     /// Deletes the output directory if there is one and rebuilds the site
     Deploy {
         /// enable watch
-        #[arg(short, long)]
+        #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
         force: bool,
     },
 }

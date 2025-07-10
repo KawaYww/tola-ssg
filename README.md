@@ -65,9 +65,9 @@ Options:
   -m, --minify
           Minify the html content
       --tailwind-support
-
+          enable tailwindcss support
       --tailwind-command <TAILWIND_COMMAND>
-          [default: tailwindcss]
+          enable tailwindcss support [default: tailwindcss]
   -h, --help
           Print help
   -V, --version

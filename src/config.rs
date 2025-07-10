@@ -34,6 +34,7 @@ pub mod serde_defaults {
         use std::path::PathBuf;
 
         pub fn language() -> String { "zh-Hans".into() }   
+        pub fn typst_command() -> String { "typst".into() }   
         pub fn tailwind_command() -> String { "tailwindcss".into() }   
         pub fn root_path() -> PathBuf { "./".into() }
         pub fn content_dir() -> PathBuf { "content".into() }
@@ -49,10 +50,28 @@ pub mod serde_defaults {
     pub mod deploy {
         pub fn provider() -> String { "git".into() }
 
-        pub mod git {
-            use gix::config::tree::Author;
+        pub mod github {
+            use std::path::PathBuf;
 
-            pub fn _remote() -> String { Author::NAME.to_string() }
+            pub fn remote() -> String { "https://github.com/alice/alice.github.io".into() }
+            pub fn branch() -> String { "main".into() }
+            pub fn token_path() -> PathBuf { "~/xxx/xxx/.github-token-in-this-file".into() }
+        }
+
+        pub mod cloudflare {
+            use std::path::PathBuf;
+
+            pub fn _remote() -> String { "https://alice.com".into() }
+            pub fn _branch() -> String { "main".into() }
+            pub fn _token_path() -> PathBuf { "~/xxx/xxx/.github-token-in-this-file".into() }
+        }
+
+        pub mod vercal {
+            use std::path::PathBuf;
+
+            pub fn _remote() -> String { "https://alice.com".into() }
+            pub fn _branch() -> String { "main".into() }
+            pub fn _token_path() -> PathBuf { "~/xxx/xxx/.github-token-in-this-file".into() }
         }
     }
 }
@@ -107,13 +126,17 @@ pub struct BuildConfig {
     #[educe(Default = serde_defaults::build::assets_dir())]
     pub assets_dir: PathBuf,
 
+    // The name of typst command
+    #[serde(default = "serde_defaults::build::typst_command")]
+    #[educe(Default = serde_defaults::build::typst_command())]
+    pub typst_command: String,
 
     // enable tailwindcss support
     #[serde(default = "serde_defaults::r#true")]
     #[educe(Default = true)]
     pub tailwind_support: bool,
 
-    // enable tailwindcss support
+    // The name of tailwind command
     #[serde(default = "serde_defaults::build::tailwind_command")]
     #[educe(Default = serde_defaults::build::tailwind_command())]
     pub tailwind_command: String,
@@ -179,19 +202,21 @@ pub struct DeployConfig {
 #[serde(deny_unknown_fields)]
 pub struct GithubProvider {
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::provider")]
-    #[educe(Default = serde_defaults::deploy::provider())]
+    #[serde(default = "serde_defaults::deploy::github::remote")]
+    #[educe(Default = serde_defaults::deploy::github::remote())]
     pub remote: String,
 
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::provider")]
-    #[educe(Default = serde_defaults::deploy::provider())]
+    #[serde(default = "serde_defaults::deploy::github::branch")]
+    #[educe(Default = serde_defaults::deploy::github::branch())]
     pub branch: String,
 
+    // Warning: Be carefully if you enable this option
+    // Warning: Not pushing your token into public repo
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::provider")]
-    #[educe(Default = serde_defaults::deploy::provider())]
-    pub commit_message: String,
+    #[serde(default = "serde_defaults::deploy::github::token_path")]
+    #[educe(Default = serde_defaults::deploy::github::token_path())]
+    pub token_path: PathBuf,
 }
 
 // `[deploy.cloudflare]` in toml
@@ -254,22 +279,16 @@ impl SiteConfig {
     }
 
     #[rustfmt::skip]
-    pub fn update_wiht_cli_settings(mut self, cli: &Cli) -> Self {
-        fn update_path_with_root(root: &Path, config: &mut SiteConfig, cli: &Cli) {
-            config.build.root_path = root.to_owned();
-            config.build.content_dir = root.join(&cli.content);
-            config.build.output_dir = root.join(&cli.output);
-            config.build.assets_dir = root.join(&cli.assets);
-        }
+    pub fn update_with_cli(mut self, cli: &Cli) -> Self {       
+        self.update_path_with_root(&cli.root, cli);
         
+        self.build.minify = cli.minify;
         self.build.tailwind_support = cli.tailwind_support;
         self.build.tailwind_command = cli.tailwind_command.to_owned();
 
-        update_path_with_root(&self.build.root_path.clone(), &mut self, cli);
-
         if let Some(subcommand)  = &cli.command { match subcommand {
             Commands::Init { name } => {
-                update_path_with_root(name, &mut self, cli);
+                self.update_path_with_root(name, cli);
             },
             Commands::Serve { interface, port, watch } => {
                 self.serve.interface = interface.to_owned();
@@ -283,6 +302,18 @@ impl SiteConfig {
         }}
 
         self
+    }
+
+    fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
+        self.build.root_path = root.to_owned();
+        self.build.content_dir = root.join(&cli.content);
+        self.build.output_dir = root.join(&cli.output);
+        self.build.assets_dir = root.join(&cli.assets);
+
+        let token_path = &self.deploy.git_provider.token_path;
+        if token_path.is_relative() {
+            self.deploy.git_provider.token_path = root.join(token_path);
+        }
     }
     
     fn validate(&self) -> Result<(), ConfigError> {
