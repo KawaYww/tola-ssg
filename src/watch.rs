@@ -1,4 +1,4 @@
-use crate::{config::SiteConfig, log, utils::watcher::process_watched_files};
+use crate::{config::SiteConfig, log, utils::watch::process_watched_files};
 use anyhow::{Context, Result};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::{path::PathBuf, time::{Duration, Instant}};
@@ -27,8 +27,8 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
 
-    log!("watcher",
-        "Watching for changes in {}", config.build.content_dir.display()
+    log!("watch",
+        "watching for changes in {}", config.build.content_dir.display()
     );
 
     for res in rx {
@@ -36,16 +36,16 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
             Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
                 last_event_time = Instant::now();
                 std::thread::spawn(move || if let Err(e) = handle_files(&event.paths, config) {
-                    log!("watcher", "Error: {:?}", e);
+                    log!("watch", "error: {:?}", e);
                 });
             },
             Err(e) => {
-                log!("watcher", "Error: {:?}", e);
+                log!("watch", "error: {:?}", e);
             },
         };
 
         if shutdown_rx.try_recv().is_ok() {
-            log!("watcher", "Received shutdown signal");
+            log!("watch", "received shutdown signal");
             break;
         }
     }

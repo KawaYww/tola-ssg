@@ -73,7 +73,7 @@ pub fn commit_all(repo: &Repository, message: &str) -> Result<()> {
         parent_ids_or_empty(repo)?
     )?;
     
-    log!("commit", "In repo `{}`, commit id for blob: {commit_id:?}", root.display());
+    log!("commit", "in repo `{}`, commit id for blob: {commit_id:?}", root.display());
     
     Ok(())
 }

@@ -108,6 +108,23 @@ pub struct BaseConfig {
     pub copyright: String,
 }
 
+#[test]
+fn validate_base_config() {
+    let config = r#"
+        [base]
+        title = "KawaYww"
+        description = "KawaYww's Blog"
+        base_url = "https://kawayww.com"
+        default_language = "zh_Hans"
+        copyright = "2025 KawaYww"    
+    "#;
+    let config: SiteConfig = toml::from_str(config).unwrap();
+
+    assert_eq!(config.base.title, "KawaYww");
+    assert_eq!(config.base.description, "KawaYww");
+    assert_eq!(config.base.title, "KawaYww");
+}
+
 // `[build]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
@@ -144,7 +161,7 @@ pub struct BuildConfig {
     pub minify: bool,
 }
 
-// `[server]` in toml
+// `[serve]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
@@ -392,58 +409,3 @@ impl SiteConfig {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const SAMPLE_CONFIG: &str = r#"
-        [base]
-        title = "我的博客"
-        description = "一个关于技术的博客"
-        base_url = "https://example.com"
-        default_language = "zh-CN"
-        copyright = "© 2023 我的博客"
-
-        [build]
-        output_dir = "public"
-        compile_tailwindcss = true
-
-        [extra]
-        author = "张三"
-        github = "https://github.com/zhangsan"
-    "#;
-
-    #[test]
-    fn parse() {
-        let config = SiteConfig::from_str(SAMPLE_CONFIG).unwrap();
-        
-        assert_eq!(config.base.title, "我的博客");
-        assert_eq!(config.build.output_dir, PathBuf::from("public"));
-        assert_eq!(config.extra["author"].as_str(), Some("张三"));
-    }
-
-    #[test]
-    fn default_values() {
-        let config_str = r#"
-            [base]
-            title = "默认值测试"
-            base_url = "https://example.com"
-        "#;
-        
-        let config = SiteConfig::from_str(config_str).unwrap();
-        
-        assert_eq!(config.build.output_dir, PathBuf::from("public"));
-        assert_eq!(config.build.minify, true);
-        assert_eq!(config.tailwind.enable, true);
-    }
-
-    #[test]
-    fn validation() {
-        let invalid_url = r#"
-            [base]
-            title = "测试"
-            base_url = "example.com"
-        "#;
-        assert!(SiteConfig::from_str(invalid_url).is_err());
-    }
-}

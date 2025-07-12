@@ -1,7 +1,7 @@
 use std::{env, fs, path::{Path, PathBuf}, thread, time::Duration};
 use anyhow::{bail, Result};
 use crate::config::SiteConfig;
-use super::builder::{compile_post, copy_asset};
+use super::build::{compile_post, copy_asset};
 use rayon::prelude::*;
 
 pub fn compile_posts_in_parallel(files: &[&PathBuf], config: &SiteConfig) -> Result<()> {

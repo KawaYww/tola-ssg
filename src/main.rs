@@ -1,21 +1,21 @@
-mod builder;
+mod build;
 mod cli;
-mod initer;
-mod deployer;
+mod init;
+mod deploy;
 mod config;
-mod server;
+mod serve;
 mod utils;
-mod watcher;
+mod watch;
 
 use anyhow::Result;
-use builder::build_site;
+use build::build_site;
 use clap::Parser;
 use cli::{Cli, Commands};
 use config::SiteConfig;
-use deployer::deploy_site;
-use initer::new_site;
-use server::serve_site;
-use utils::checker::check_required_command_installed;
+use deploy::deploy_site;
+use init::new_site;
+use serve::serve_site;
+use utils::check::check_required_command_installed;
 
 #[rustfmt::skip]
 #[tokio::main]

@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use crate::{builder::build_site, config::SiteConfig, utils::git};
+use crate::{build::build_site, config::SiteConfig, utils::git};
 
 pub fn deploy_site(config: &'static SiteConfig) -> Result<()> {
     match config.deploy.provider.as_str() {

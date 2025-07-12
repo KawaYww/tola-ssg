@@ -1,5 +1,5 @@
 pub mod git;
-pub mod checker;
-pub mod logger;
-pub mod builder;
-pub mod watcher;
+pub mod check;
+pub mod log;
+pub mod build;
+pub mod watch;

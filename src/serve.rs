@@ -1,5 +1,5 @@
 use crate::{
-    builder::build_site, config::SiteConfig, log, watcher::watch_for_changes_blocking
+    build::build_site, config::SiteConfig, log, watch::watch_for_changes_blocking
 };
 use anyhow::{Context, Result, anyhow};
 use axum::{
@@ -29,9 +29,9 @@ pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
         async move { while restart_flag { match start_server(config).await {
             Ok(()) => restart_flag = false,
             Err(e) => {
-                log!("error", "Failed to start server: {e:?}");
+                log!("error", "failed to start server: {e:?}");
                 for i in (0..=timeout_secs).rev() {
-                    log!("tips", "Automatically trying to start it again in {i} seconds");
+                    log!("serve", "automatically trying to start it again in {i} seconds");
                     tokio::time::sleep(Duration::from_secs(i)).await;
                 }
             }
@@ -52,7 +52,7 @@ pub async fn start_server(config: &'static SiteConfig) -> Result<()> {
     let addr = SocketAddr::new(interface, port);
     let listener = TcpListener::bind(addr)
         .await
-        .with_context(|| format!("[Server] Failed to bind to address {addr}"))?;
+        .with_context(|| format!("[serve] Failed to bind to address {addr}"))?;
     let app = {
         let base_path = config.build.output_dir.clone();
         let serve_dir = ServeDir::new(&config.build.output_dir)
@@ -61,11 +61,11 @@ pub async fn start_server(config: &'static SiteConfig) -> Result<()> {
         Router::new().fallback(get_service(serve_dir))
     };
 
-    log!("server", "Serving site on http://{}", addr);
+    log!("serve", "serving site on http://{}", addr);
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .context("[Server] Failed to start")?;
+        .context("[server] failed to start")?;
 
     Ok(())
 }
@@ -123,5 +123,5 @@ async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await
         .expect("Failed to install CTRL+C signal handler");
-    log!("server", "Shutting down gracefully...");
+    log!("serve", "shutting down gracefully...");
 }

@@ -1,4 +1,4 @@
-use crate::{config::SiteConfig, log, utils::{builder::{compile_post, copy_asset, process_files}, git}};
+use crate::{config::SiteConfig, log, utils::{build::{compile_post, copy_asset, process_files}, git}};
 use anyhow::{anyhow, Context, Result};
 use gix::Repository;
 use std::{fs, thread};
@@ -40,8 +40,8 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
         posts_handle.join().map_err(|e| anyhow!("{e:?}"))??;
         assets_handle.join().map_err(|e| anyhow!("{e:?}"))??;
 
-        log!("builder",
-            "Successfully generated site in: {}", config.build.output_dir.display()
+        log!("build",
+            "successfully generated site in: {}", config.build.output_dir.display()
         );
 
         Ok(repo)
