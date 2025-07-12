@@ -4,18 +4,23 @@ use gix::Repository;
 use std::{fs, thread};
 
 #[rustfmt::skip]
-pub fn build_site(config: &'static SiteConfig) -> Result<Repository> {
+pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Repository> {
     let output_dir = &config.build.output_dir;
     let content_dir = &config.build.content_dir;
     let assets_dir = &config.build.assets_dir;
 
     // Clear output directory and create git repo for deploying
-    if output_dir.exists() {
-        fs::remove_dir_all(output_dir)
-            .with_context(|| format!("[Builder] Failed to clear output directory: {}", output_dir.display()))?;
-    }
+    let repo = match (output_dir.exists(), should_clear) {
+        (true, true) => {
+            fs::remove_dir_all(output_dir)
+                .with_context(|| format!("[builder] Failed to clear output directory: {}", output_dir.display()))?;
+            git::create_repo(output_dir)?
+        },
+        (true, false) => git::open_repo(output_dir)?,
 
-    let repo = git::create_repo(output_dir)?;
+        (false, _) => git::create_repo(output_dir)?,
+    };
+
 
     // Process files in parallel
     thread::scope(|s| {

@@ -9,14 +9,7 @@ pub fn deploy_site(config: &'static SiteConfig) -> Result<()> {
 }
 
 fn deploy_github(config: &'static SiteConfig) -> Result<()> {
-    let output_dir = &config.build.output_dir;
-
-    let repo = if !output_dir.exists() {
-        build_site(config)?
-    } else {
-        git::open_repo(output_dir)?
-    };
-
+    let repo = build_site(config, config.deploy.force)?;
     git::commit_all(&repo, "deploy it")?;
     git::push(&repo, config)?;
     

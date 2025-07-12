@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub struct Cli {
     /// root directory path
     #[arg(short, long, default_value = "./")]
-    pub root: PathBuf,
+    pub root: Option<PathBuf>,
 
     /// Output directory path related to `root_dor`
     #[arg(short, long, default_value = "public")]
@@ -25,18 +25,20 @@ pub struct Cli {
     pub config: PathBuf,
 
     /// Minify the html content
-    #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
-    pub minify: bool,
+    #[arg(short, long)]
+    pub minify: Option<bool>,
 
     /// enable tailwindcss support
     #[arg(long, default_value_t = true)]
     /// enable tailwindcss support
     #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
     pub tailwind_support: bool,
+    #[arg(short, long)]
+    pub tailwind: Option<bool>,
 
     /// subcommands
     #[command(subcommand)]
-    pub command: Option<Commands>,
+    pub command: Commands,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -59,8 +61,8 @@ pub enum Commands {
         port: u16,
 
         /// enable watch
-        #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
-        watch: bool,
+        #[arg(short, long)]
+        watch: Option<bool>,
     },
 
     /// Deletes the output directory if there is one and rebuilds the site
@@ -70,25 +72,7 @@ pub enum Commands {
     /// Deletes the output directory if there is one and rebuilds the site
     Deploy {
         /// enable watch
-        #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
-        force: bool,
+        #[arg(short, long)]
+        force: Option<bool>,
     },
-}
-
-impl Cli {
-    pub fn command_is_serve(&self) -> bool {
-        matches!(self.command, Some(Commands::Serve { .. }))
-    }
-
-    pub fn command_is_built(&self) -> bool {
-        matches!(self.command, Some(Commands::Build { .. }))
-    }
-
-    pub fn command_is_init(&self) -> bool {
-        matches!(self.command, Some(Commands::Init { .. }))
-    }
-
-    pub fn command_is_deploy(&self) -> bool {
-        matches!(self.command, Some(Commands::Deploy { .. }))
-    }
 }

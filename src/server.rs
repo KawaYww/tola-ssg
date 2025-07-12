@@ -45,7 +45,7 @@ pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
 }
 
 pub async fn start_server(config: &'static SiteConfig) -> Result<()> {
-    build_site(config)?;
+    build_site(config, false)?;
 
     let interface = IpAddr::from_str(&config.serve.interface)?;
     let port = config.serve.port;

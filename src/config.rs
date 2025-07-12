@@ -1,3 +1,4 @@
+use anyhow::{Result, bail};
 use educe::Educe;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
@@ -275,12 +276,12 @@ pub struct SiteConfig {
 
 
 impl SiteConfig {
-    pub fn from_str(content: &str) -> Result<Self, ConfigError> {
+    pub fn from_str(content: &str) -> Result<Self> {
         let config: SiteConfig = toml::from_str(content)?;
         Ok(config)
     }
 
-    pub fn from_file(path: &Path) -> Result<Self, ConfigError> {
+    pub fn from_file(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path).map_err(|err| ConfigError::Io (
             path.to_path_buf(),
             err
@@ -289,33 +290,40 @@ impl SiteConfig {
     }
 
     #[rustfmt::skip]
-    pub fn update_with_cli(&mut self, cli: &Cli) {
-        self.update_path_with_root(&cli.root, cli);
-        
-        self.build.minify = cli.minify;
-        self.tailwind.enable = cli.tailwind_support;
+    pub fn update_with_cli(&mut self, cli: &Cli) {      
+        Self::update_option(&mut self.build.root_path, cli.root.as_ref());
+        Self::update_option(&mut self.build.minify, cli.minify.as_ref());
+        Self::update_option(&mut self.tailwind.enable, cli.tailwind.as_ref());
 
-        if let Some(subcommand)  = &cli.command { match subcommand {
+        self.update_path_with_root(self.build.root_path.clone().as_path(), cli);
+
+        match &cli.command {
             Commands::Init { name: Some(name) } => {
-                self.update_path_with_root(&cli.root.join(name), cli);
+                self.update_path_with_root(&self.build.root_path.join(name), cli);
             },
             Commands::Serve { interface, port, watch } => {
                 self.serve.interface = interface.to_owned();
                 self.serve.port = *port;
-                self.serve.watch = *watch;
+                Self::update_option(&mut self.serve.watch, watch.clone().as_ref());
             },
             Commands::Deploy { force } => {
-                self.deploy.force = *force;
+                Self::update_option(&mut self.deploy.force, force.clone().as_ref());
             },
             _ => ()
-        }}
+        }
+    }
+
+    fn update_option<T: Clone>(config_option: &mut T, cli_option: Option<&T>) {
+        if let Some(option) = cli_option {
+            *config_option = option.clone()
+        }
     }
 
     fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
-        self.build.root_path = root.to_owned();
         self.build.content_dir = root.join(&cli.content);
         self.build.output_dir = root.join(&cli.output);
         self.build.assets_dir = root.join(&cli.assets);
+        self.build.root_path = root.to_owned();
 
         let token_path = {
             let path = &self.deploy.github_provider.token_path;
@@ -330,29 +338,36 @@ impl SiteConfig {
         }
     }
     
-    pub fn validate(&self, cli: &Cli) -> Result<(), ConfigError> {
+    #[rustfmt::skip]
+    #[allow(unused)]
+    pub fn validate(&self, cli: &Cli) -> Result<()> {
+        let root = self.build.root_path.as_path();
+        let output_dir = self.build.output_dir.as_path();
         let base_url = self.base.base_url.as_str();
         let token_path = self.deploy.github_provider.token_path.as_path();
+        let force = self.deploy.force;
         
-        if !base_url.starts_with("http") {
-            return Err(ConfigError::Validation(
-                "[base.base_url] should start with `http://` or `https://`".into()
-            ));
+        if !base_url.starts_with("http") { bail!(ConfigError::Validation(
+            "[base.base_url] should start with `http://` or `https://`".into()
+        ))}
 
-        }
+        match cli.command {
+            Commands::Init { .. } => {
+                if root.exists() { bail!("The path already exists") }
+            },
+            Commands::Deploy { .. } => {
+                if token_path != Path::new("") {
+                    if !token_path.exists() { bail!(ConfigError::Validation(
+                        "[deploy.github.token_path] not exists".into()
+                    ))}
+                    if !token_path.is_file() { bail!(ConfigError::Validation(
+                        "[deploy.github.token_path] is not a file".into()
+                    ))}
+                }
+            },
+            _ => ()
+        }      
 
-        if cli.command_is_deploy() && token_path != Path::new("") {
-            if !token_path.exists() {
-                return Err(ConfigError::Validation(
-                    "[deploy.github.token_path] not exists".into()
-                ));
-            }
-            if !token_path.is_file() {
-                return Err(ConfigError::Validation(
-                    "[deploy.github.token_path] is not a file".into()
-                ));
-            }
-        }
         Ok(())
     }
 }
