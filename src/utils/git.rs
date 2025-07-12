@@ -12,9 +12,38 @@ use gix::{bstr::BString, commit::NO_PARENT_IDS, index::{entry::{Flags, Mode, Sta
 use crate::{config::SiteConfig, log};
 
 #[derive(Debug, Default)]
+struct Remotes(Vec<Remote>);
+
+#[derive(Debug, Default)]
 struct Remote {
-    name: String,
-    url: String,
+    pub name: String,
+    pub url: String,
+}
+
+impl Remotes {
+    fn new(repo: &Repository) -> Result<Self> {
+        let root = repo.path().parent().unwrap();
+
+        let output = Command::new("git").args(["remote", "-v"]).current_dir(root).output()?;
+        let output = String::from_utf8(output.stdout)?;
+        
+        let remotes = output.lines().map(|line| {
+            let parts: Vec<_> = line.split_whitespace().collect();
+            let name = parts[0].to_owned();
+            let url = parts[1].to_owned();
+
+            Remote { name, url }
+        }).collect();
+
+        Ok(Self(remotes))
+    }
+
+    fn any<P>(&self, p: P) -> bool
+    where P: Fn(&Remote) -> bool
+    {
+        self.0.iter().any(p)
+    }
+
 }
 
 pub fn create_repo(root: &Path) -> Result<Repository> {
@@ -61,26 +90,39 @@ fn parent_ids_or_empty(repo: &Repository) -> Result<Vec<gix::ObjectId>> {
 }
 
 pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
+    let remote_url = config.deploy.github_provider.url.as_str();
+    log!("git", "pushing to `{remote_url}`");
+    
     let root = repo.path().parent().unwrap();
-    let token_path = &config.deploy.github_provider.token_path;
+    let token_path = config.deploy.github_provider.token_path.as_ref();
     let force = config.deploy.force;
-    let remote_url_in_config = config.deploy.github_provider.remote_url.as_str();
+    let remote_url_in_config = config.deploy.github_provider.url.as_str();
     let branch_in_config = config.deploy.github_provider.branch.as_str();
 
-    let token = fs::read_to_string(token_path)
-        .unwrap_or_default()
-        .trim()
-        .to_owned();
-    
-    let remotes = get_remotes(repo)?;
-    let remote_origin_exists =  remotes.iter().any(|remote| remote.name == "origin");
+    let token = match token_path {
+        None => String::new(),
+        Some(token_path) => {
+            fs::read_to_string(token_path)
+                .unwrap_or_default()
+                .trim()
+                .to_owned()
+        },
+    };
 
-    let remote_url = format!("https://{token}@{}",
+    let split_symbol = if token.is_empty() { "" } else { "@" };
+    let remote_url = format!("https://{token}{split_symbol}{}",
         remote_url_in_config
             .strip_prefix("https://")
             .context("the remote url starts without https")
             .unwrap()
     );
+
+    let remote_args = [
+        "remote",
+        if Remotes::new(repo)?.any(|remote| remote.name == "origin") { "set-url" } else { "add" },
+        "origin",
+        remote_url.as_str()
+    ];
     let push_args: Vec<&str> = [
         "push",
         "--set-upstream",
@@ -92,13 +134,6 @@ pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
     .filter(|p| !p.is_empty())
     .collect();
 
-    let remote_args = [
-        "remote",
-        if remote_origin_exists { "set-url" } else { "add" },
-        "origin",
-        remote_url.as_str()
-    ];
-
 
     let remote_output = git_command(root, &remote_args)?;
     log_git_output(remote_output)?;
@@ -106,32 +141,11 @@ pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
     let push_output = git_command(root, &push_args)?;
     log_git_output(push_output)?;
 
-    // if remote_origin_exists {
-
-    // }
-    let remote_url_equals_config = remotes.iter().any(|remote| remote.name == "origin" && remote.url == remote_url);
-
+    let remote_url_equals_config = Remotes::new(repo)?.any(|remote| remote.name == "origin" && remote.url == remote_url);
     if !remote_url_equals_config && !force {
-        bail!("The url in remote `origin` not equal to url in [deploy.git], enable [deploy.force] or reset url manually")
+        bail!("The url in remote `origin` in repo `{root:?}` not equal to url in [deploy.git], enable [deploy.force] or reset url manually")
     }
     Ok(())
-}
-
-fn get_remotes(repo: &Repository) -> Result<Vec<Remote>> {
-    let root = repo.path().parent().unwrap();
-
-    let output = Command::new("git").args(["remote", "-v"]).current_dir(root).output()?;
-    let output = String::from_utf8(output.stdout)?;
-        
-    let remotes = output.lines().map(|line| {
-        let parts: Vec<_> = line.split_whitespace().collect();
-        let name = parts[0].to_owned();
-        let url = parts[1].to_owned();
-
-        Remote { name, url }
-    }).collect();
-
-    Ok(remotes)
 }
 
 fn build_tree_from_dir(root: &Path, repo: &Repository, index: &mut gix::index::State) -> Result<Tree> {

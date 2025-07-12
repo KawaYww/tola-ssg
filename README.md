@@ -3,23 +3,27 @@
 ## Introduction
 
 `Tola`: A static site generator for Typst-based blog.  
-
-The `tola` command handles the most tedious tasks unrelated to Typst itself.  
+It handles the most tedious tasks unrelated to Typst itself.  
 
 e.g.,  
-- watch changes in multiple files and recompile  
-- provide a local server to preview  
-- to prevent users from typing tedious/repetitive command options, like `typst compile --features html --format html --root ./  --font-path ./ xxx.typ xxx/index.html`
-- run `typst compile ...` and `tailwindcss -i input.css ...` (`tola` comes with built-in Tailwind CSS support out of the box.) (developing in `v0.5.0`)
-- deploy the generated blog to github-page/cloudflare-page/vercal-page (developing in `v0.5.0`)
-- provide a small-kernel typst template file, so that most people can customize their own site easily  (developing )
+- watching changes and recompile post  
+- local server for previewing  
+- preventing users from typing tedious/repetitive command which user doesn't matter
+- built-in tailwind-css support, out of the box
+- deploying the generated blog to github/cloudflare/vercal page
+- providing typst template file with a small kernal, so that most people can customize their own site easily (in plan)
 
-*Note*: The release 0.5.0 is comming soon.  
+*Note*: The release 0.5.0 is comming soon. (tailwindcss integration, github deployment)  
 
 ## Philosophy
 
 The philosophy of Tola:  
-**Please just focus on Typst itself(`tola` helps you get it!)**  
+**Please just focus on Typst itself**  
+
+`tola` helps you get closer!  
+- A lightweight and minimal abstraction layer should be provided, which allows users to work without being locked into a rigid framework.
+- If you can accomplish something more easily with Typst, then you’d better use Typst.
+- Keep the core simple and maintainable, and enjoy it.
 
 ## Examples
 

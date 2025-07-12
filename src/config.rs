@@ -48,6 +48,9 @@ pub mod serde_defaults {
     }
 
     pub mod tailwind {
+        use std::path::PathBuf;
+
+        pub fn input() -> Option<PathBuf> { None }
         pub fn command() -> String { "tailwindcss".into() }
     }
 
@@ -57,9 +60,9 @@ pub mod serde_defaults {
         pub mod github {
             use std::path::PathBuf;
 
-            pub fn remote_url() -> String { "https://github.com/alice/alice.github.io".into() }
+            pub fn url() -> String { "https://github.com/alice/alice.github.io".into() }
             pub fn branch() -> String { "main".into() }
-            pub fn token_path() -> PathBuf { PathBuf::new() }
+            pub fn token_path() -> Option<PathBuf> { None }
         }
 
         pub mod cloudflare {
@@ -167,9 +170,14 @@ pub struct ServeConfig {
 #[serde(deny_unknown_fields)]
 pub struct TailwindConfig {
     // whether to enable tailwindcss support
-    #[serde(default = "serde_defaults::r#true")]
-    #[educe(Default = true)]
+    #[serde(default = "serde_defaults::r#false")]
+    #[educe(Default = false)]
     pub enable: bool,
+
+    // whether to enable tailwindcss support
+    #[serde(default = "serde_defaults::tailwind::input")]
+    #[educe(Default = serde_defaults::tailwind::input())]
+    pub input: Option<PathBuf>,
 
     // The name of tailwind command
     #[serde(default = "serde_defaults::tailwind::command")]
@@ -211,9 +219,9 @@ pub struct DeployConfig {
 #[serde(deny_unknown_fields)]
 pub struct GithubProvider {
     // The remote_url of generated site repo
-    #[serde(default = "serde_defaults::deploy::github::remote_url")]
-    #[educe(Default = serde_defaults::deploy::github::remote_url())]
-    pub remote_url: String,
+    #[serde(default = "serde_defaults::deploy::github::url")]
+    #[educe(Default = serde_defaults::deploy::github::url())]
+    pub url: String,
 
     // The branch of generated site repo
     #[serde(default = "serde_defaults::deploy::github::branch")]
@@ -225,7 +233,7 @@ pub struct GithubProvider {
     // The provider to use for deployment
     #[serde(default = "serde_defaults::deploy::github::token_path")]
     #[educe(Default = serde_defaults::deploy::github::token_path())]
-    pub token_path: PathBuf,
+    pub token_path: Option<PathBuf>,
 }
 
 // `[deploy.cloudflare]` in toml
@@ -325,16 +333,14 @@ impl SiteConfig {
         self.build.assets_dir = root.join(&cli.assets);
         self.build.root_path = root.to_owned();
 
-        let token_path = {
-            let path = &self.deploy.github_provider.token_path;
-            let path = shellexpand::tilde(path.to_str().unwrap());
-            PathBuf::from(path.into_owned())
-        };
-
-        self.deploy.github_provider.token_path = if token_path.is_relative() {
-            root.join(token_path)
-        } else {
-            token_path
+        if let Some(token_path) = &self.deploy.github_provider.token_path {
+            let path = shellexpand::tilde(token_path.to_str().unwrap());
+            let path = PathBuf::from(path.into_owned());
+            self.deploy.github_provider.token_path = if path.is_relative() {
+                Some(root.join(path))
+            } else {
+                Some(path.to_owned())
+            }
         }
     }
     
@@ -344,23 +350,37 @@ impl SiteConfig {
         let root = self.build.root_path.as_path();
         let output_dir = self.build.output_dir.as_path();
         let base_url = self.base.base_url.as_str();
-        let token_path = self.deploy.github_provider.token_path.as_path();
+        let token_path = self.deploy.github_provider.token_path.as_ref();
         let force = self.deploy.force;
         
         if !base_url.starts_with("http") { bail!(ConfigError::Validation(
             "[base.base_url] should start with `http://` or `https://`".into()
         ))}
 
+        if self.tailwind.enable {
+            match &self.tailwind.input {
+                None => bail!("[tailwind.enable] = true, but you didn't specify your tailwind input file"),
+                Some(path) => {
+                    if !path.exists() { bail!(ConfigError::Validation(
+                        "[tailwind.input] not exists".into()
+                    ))}
+                    if !path.is_file() { bail!(ConfigError::Validation(
+                        "[tailwind.input] is not a file".into()
+                    ))}
+                }
+            }
+        }
+
         match cli.command {
             Commands::Init { .. } => {
                 if root.exists() { bail!("The path already exists") }
             },
             Commands::Deploy { .. } => {
-                if token_path != Path::new("") {
-                    if !token_path.exists() { bail!(ConfigError::Validation(
+                if let Some(path) =  token_path {
+                    if !path.exists() { bail!(ConfigError::Validation(
                         "[deploy.github.token_path] not exists".into()
                     ))}
-                    if !token_path.is_file() { bail!(ConfigError::Validation(
+                    if !path.is_file() { bail!(ConfigError::Validation(
                         "[deploy.github.token_path] is not a file".into()
                     ))}
                 }
