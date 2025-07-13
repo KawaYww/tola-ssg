@@ -36,7 +36,7 @@ pub mod serde_defaults {
 
         pub fn language() -> String { "zh-Hans".into() }   
         pub fn typst_command() -> String { "typst".into() }   
-        pub fn root_path() -> PathBuf { "./".into() }
+        pub fn root_path() -> Option<PathBuf> { None }
         pub fn content_dir() -> PathBuf { "content".into() }
         pub fn output_dir() -> PathBuf { "public".into() }
         pub fn assets_dir() -> PathBuf { "assets".into() }
@@ -133,7 +133,7 @@ pub struct BuildConfig {
     // root directory path
     #[serde(default = "serde_defaults::build::root_path")]
     #[educe(Default = serde_defaults::build::root_path())]
-    pub root_path: PathBuf,
+    pub root_path: Option<PathBuf>,
 
     // Content directory path related to `root_dor`
     #[serde(default = "serde_defaults::build::content_dir")]
@@ -314,17 +314,32 @@ impl SiteConfig {
         Self::from_str(&content)
     }
 
+    pub fn get_root(&self) -> PathBuf {
+        self.build.root_path.clone().unwrap_or_default()
+    }
+
+    pub fn set_root(&mut self, path: &Path) {
+        self.build.root_path = Some(path.to_path_buf())
+    }
+
     #[rustfmt::skip]
     pub fn update_with_cli(&mut self, cli: &Cli) {      
-        Self::update_option(&mut self.build.root_path, cli.root.as_ref());
+        if let Some(root) = &cli.root {
+            self.update_path_with_root(root.as_path(), cli);
+            self.set_root(root);
+        }
+
         Self::update_option(&mut self.build.minify, cli.minify.as_ref());
         Self::update_option(&mut self.tailwind.enable, cli.tailwind.as_ref());
 
-        self.update_path_with_root(self.build.root_path.clone().as_path(), cli);
-
         match &cli.command {
             Commands::Init { name: Some(name) } => {
-                self.update_path_with_root(&self.build.root_path.join(name), cli);
+                let root = if let Some(root) = &self.build.root_path {
+                    root.join(name)
+                } else {
+                    name.clone()
+                };
+                self.update_path_with_root(&root, cli);
             },
             Commands::Serve { interface, port, watch } => {
                 self.serve.interface = interface.to_owned();
@@ -345,10 +360,10 @@ impl SiteConfig {
     }
 
     fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
+        self.set_root(root);
         self.build.content_dir = root.join(&cli.content);
         self.build.output_dir = root.join(&cli.output);
         self.build.assets_dir = root.join(&cli.assets);
-        self.build.root_path = root.to_owned();
 
         if let Some(token_path) = &self.deploy.github_provider.token_path {
             let path = shellexpand::tilde(token_path.to_str().unwrap());
@@ -364,7 +379,7 @@ impl SiteConfig {
     #[rustfmt::skip]
     #[allow(unused)]
     pub fn validate(&self, cli: &Cli) -> Result<()> {
-        let root = self.build.root_path.as_path();
+        let root = self.get_root();
         let output_dir = self.build.output_dir.as_path();
         let base_url = self.base.base_url.as_str();
         let token_path = self.deploy.github_provider.token_path.as_ref();

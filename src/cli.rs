@@ -29,10 +29,6 @@ pub struct Cli {
     pub minify: Option<bool>,
 
     /// enable tailwindcss support
-    #[arg(long, default_value_t = true)]
-    /// enable tailwindcss support
-    #[arg(short, long, num_args = 0..=1, require_equals = true, default_value_t = true, default_missing_value = "true")]
-    pub tailwind_support: bool,
     #[arg(short, long)]
     pub tailwind: Option<bool>,
 

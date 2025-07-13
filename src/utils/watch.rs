@@ -1,15 +1,15 @@
 use std::{env, fs, path::{Path, PathBuf}, thread, time::Duration};
 use anyhow::{bail, Result};
 use crate::config::SiteConfig;
-use super::build::{compile_post, copy_asset};
+use super::build::{process_post, process_asset};
 use rayon::prelude::*;
 
 pub fn compile_posts_in_parallel(files: &[&PathBuf], config: &SiteConfig) -> Result<()> {
-    files.par_iter().try_for_each(|path| compile_post(path, config))
+    files.par_iter().try_for_each(|path| process_post(path, config))
 }
 
 pub fn copy_assets_in_parallel(files: &[&PathBuf], config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
-    files.par_iter().try_for_each(|path| copy_asset(path, config, should_wait_until_stable))
+    files.par_iter().try_for_each(|path| process_asset(path, config, should_wait_until_stable))
 }
 
 #[rustfmt::skip]

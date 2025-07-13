@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::{config::SiteConfig, utils::git};
 
-// default config path
+// default ignored path
 const IGNORES: &[&str] = &[
     ".gitignore",
     ".ignore",
@@ -26,7 +26,7 @@ const DIRS: &[&str] = &[
 ];
 
 pub fn new_site(config: &'static SiteConfig) -> Result<()> {
-    let root = &config.build.root_path;
+    let root = &config.get_root();
    
     let repo = git::create_repo(root)?;       
     init_default_config(root)?;

@@ -49,7 +49,9 @@ where
         })
 }
 
-pub fn compile_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
+pub fn process_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
+    let root = &config.get_root();
+    
     let content_dir = &config.build.content_dir;
     let output_dir = &config.build.output_dir;
 
@@ -72,9 +74,9 @@ pub fn compile_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
     let output = Command::new("typst")
         .args(["compile", "--features", "html", "--format", "html"])
         .arg("--font-path")
-        .arg(&config.build.root_path)
+        .arg(root)
         .arg("--root")
-        .arg(&config.build.root_path)
+        .arg(root)
         .arg(post_path)
         .arg(&html_path)
         .output()?;
@@ -96,14 +98,21 @@ pub fn compile_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn copy_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
+pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
     let assets_dir = &config.build.assets_dir;
     let output_dir = &config.build.output_dir;
+
+    match asset_path.extension().unwrap_or_default().to_str().unwrap_or_default() {
+        "css" => println!("{asset_path:?}"),
+        _ => (),
+    }
 
     let relative_asset_path = asset_path
         .strip_prefix(assets_dir)?
         .to_str()
         .ok_or(anyhow!("Invalid path"))?;
+
+    PathBuf::from(relative_asset_path).extension().unwrap_or_default();
 
     let output_path = output_dir.join(relative_asset_path);
 

@@ -1,4 +1,4 @@
-use crate::{config::SiteConfig, log, utils::{build::{compile_post, copy_asset, process_files}, git}};
+use crate::{config::SiteConfig, log, utils::{build::{process_post, process_asset, process_files}, git}};
 use anyhow::{anyhow, Context, Result};
 use gix::Repository;
 use std::{fs, thread};
@@ -22,17 +22,16 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
     };
 
 
-    // Process files in parallel
     thread::scope(|s| {
-        // Process all posts
+        // process all posts
         let posts_handle = s.spawn(|| 
-            process_files(content_dir,  config, &|path| path.extension().is_some_and(|ext| ext == "typ"), &compile_post)
+            process_files(content_dir,  config, &|path| path.extension().is_some_and(|ext| ext == "typ"), &process_post)
                 .context("Failed to compile all posts")
         );
 
-        // Copy assets
+        // process all assets
         let assets_handle = s.spawn(|| 
-            process_files(assets_dir,  config, &|_| true, &|path, config| copy_asset(path, config, false))
+            process_files(assets_dir,  config, &|_| true, &|path, config| process_asset(path, config, false))
                 .context("Failed to copy all assets")
         );
 

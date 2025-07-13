@@ -31,11 +31,8 @@ async fn main() -> Result<()> {
         Box::leak(Box::new(config))
     };
 
-    check_typst_installed()?;
-    utils::check_typst_installed()?;
-
     config.validate(cli)?;
-    
+   
     check_required_command_installed(config)?;
        
     match cli.command {
