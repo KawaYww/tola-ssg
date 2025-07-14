@@ -5,20 +5,20 @@ use std::path::PathBuf;
 #[command(version, about, long_about = None, arg_required_else_help = true)]
 pub struct Cli {
     /// root directory path
-    #[arg(short, long, default_value = "./")]
+    #[arg(short, long)]
     pub root: Option<PathBuf>,
 
     /// Output directory path related to `root_dor`
-    #[arg(short, long, default_value = "public")]
-    pub output: PathBuf,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 
     /// Content directory path related to `root_dor`
-    #[arg(short, long, default_value = "content")]
-    pub content: PathBuf,
+    #[arg(short, long)]
+    pub content: Option<PathBuf>,
 
     /// Assets directory path related to `root_dor`
-    #[arg(short, long, default_value = "assets")]
-    pub assets: PathBuf,
+    #[arg(short, long)]
+    pub assets: Option<PathBuf>,
 
     /// Config file path related to `root_dor`
     #[arg(short = 'C', long, default_value = "tola.toml")]
@@ -49,12 +49,12 @@ pub enum Commands {
     /// Serve the site. Rebuild and reload on change automatically
     Serve {
         /// Interface to bind on
-        #[arg(short, long, default_value = "127.0.0.1")]
-        interface: String,
+        #[arg(short, long)]
+        interface: Option<String>,
 
         /// The port you should provide
-        #[arg(short, long, default_value_t = 5277)]
-        port: u16,
+        #[arg(short, long)]
+        port: Option<u16>,
 
         /// enable watch
         #[arg(short, long)]

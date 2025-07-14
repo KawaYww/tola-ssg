@@ -358,8 +358,8 @@ impl SiteConfig {
                 self.update_path_with_root(&root, cli);
             },
             Commands::Serve { interface, port, watch } => {
-                self.serve.interface = interface.to_owned();
-                self.serve.port = *port;
+                Self::update_option(&mut self.serve.interface, interface.as_ref());
+                Self::update_option(&mut self.serve.port, port.as_ref());
                 Self::update_option(&mut self.serve.watch, watch.clone().as_ref());
             },
             Commands::Deploy { force } => {
@@ -377,10 +377,14 @@ impl SiteConfig {
 
     fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
         self.set_root(root);
-        self.build.content_dir = root.join(&cli.content);
-        self.build.output_dir = root.join(&cli.output);
-        self.build.assets_dir = root.join(&cli.assets);
+        Self::update_option(&mut self.build.content_dir, cli.content.as_ref());
+        Self::update_option(&mut self.build.assets_dir, cli.assets.as_ref());
+        Self::update_option(&mut self.build.output_dir, cli.output.as_ref());
 
+        self.build.content_dir = root.join(&self.build.content_dir);
+        self.build.assets_dir = root.join(&self.build.assets_dir);
+        self.build.output_dir = root.join(&self.build.output_dir);
+        
         // if self.build.tailwind.enable {
         //     self.build.tailwind.input 
         // }
