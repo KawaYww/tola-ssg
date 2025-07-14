@@ -46,7 +46,7 @@ The philosophy of Tola:
 ```text
 A static site generator for typst-based blog
 
-Usage: tola [OPTIONS] [COMMAND]
+Usage: tola [OPTIONS] <COMMAND>
 
 Commands:
   init    Init a template site
@@ -56,26 +56,15 @@ Commands:
   help    Print this message or the help of the given subcommand(s)
 
 Options:
-  -r, --root <ROOT>
-          root directory path [default: ./]
-  -o, --output <OUTPUT>
-          Output directory path related to `root_dor` [default: public]
-  -c, --content <CONTENT>
-          Content directory path related to `root_dor` [default: content]
-  -a, --assets <ASSETS>
-          Assets directory path related to `root_dor` [default: assets]
-  -C, --config <CONFIG>
-          Config file path related to `root_dor` [default: tola.toml]
-  -m, --minify
-          Minify the html content
-      --tailwind-support
-          enable tailwindcss support
-      --tailwind-command <TAILWIND_COMMAND>
-          enable tailwindcss support [default: tailwindcss]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
+  -r, --root <ROOT>          root directory path [default: ./]
+  -o, --output <OUTPUT>      Output directory path related to `root_dor` [default: public]
+  -c, --content <CONTENT>    Content directory path related to `root_dor` [default: content]
+  -a, --assets <ASSETS>      Assets directory path related to `root_dor` [default: assets]
+  -C, --config <CONFIG>      Config file path related to `root_dor` [default: tola.toml]
+  -m, --minify <MINIFY>      Minify the html content [possible values: true, false]
+  -t, --tailwind <TAILWIND>  enable tailwindcss support [possible values: true, false]
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
 
 You should keep the directory structure identical to the below:

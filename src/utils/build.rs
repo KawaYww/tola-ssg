@@ -71,7 +71,7 @@ pub fn process_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
         output_path.join("index.html")
     };
 
-    run_command!(&config.build.typst_command;
+    run_command!(&config.build.typst.command;
         "compile", "--features", "html", "--format", "html",
         "--font-path", root, "--root", root,
         post_path, &html_path
@@ -94,7 +94,7 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
     let output_dir = &config.build.output_dir;
 
     match asset_path.extension().unwrap_or_default().to_str().unwrap_or_default() {
-        "css" if config.tailwind.enable => {
+        "css" if config.build.tailwind.enable => {
             println!("{asset_path:?}")
             // Command::new(config.tailwind.command[0].as_str());
         },

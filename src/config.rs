@@ -35,11 +35,21 @@ pub mod serde_defaults {
         use std::path::PathBuf;
 
         pub fn language() -> String { "zh-Hans".into() }   
-        pub fn typst_command() -> Vec<String> { vec!["typst".into()] }
         pub fn root_path() -> Option<PathBuf> { None }
         pub fn content_dir() -> PathBuf { "content".into() }
         pub fn output_dir() -> PathBuf { "public".into() }
         pub fn assets_dir() -> PathBuf { "assets".into() }
+
+        pub mod typst {
+            pub fn command() -> Vec<String> { vec!["typst".into()] }
+        }
+
+        pub mod tailwind {
+            use std::path::PathBuf;
+
+            pub fn input() -> Option<PathBuf> { None }
+            pub fn command() -> Vec<String> { vec!["tailwindcss".into()] }
+        }
     }
 
     pub mod serve {
@@ -47,12 +57,6 @@ pub mod serde_defaults {
         pub fn port() -> u16 { 5277 }
     }
 
-    pub mod tailwind {
-        use std::path::PathBuf;
-
-        pub fn input() -> Option<PathBuf> { None }
-        pub fn command() -> Vec<String> { vec!["tailwindcss".into()] }
-    }
 
     pub mod deploy {
         pub fn provider() -> String { "github".into() }
@@ -150,15 +154,18 @@ pub struct BuildConfig {
     #[educe(Default = serde_defaults::build::assets_dir())]
     pub assets_dir: PathBuf,
 
-    // The name of typst command
-    #[serde(default = "serde_defaults::build::typst_command")]
-    #[educe(Default = serde_defaults::build::typst_command())]
-    pub typst_command: Vec<String>,
-
     // Minify the html content
     #[serde(default = "serde_defaults::r#true")]
     #[educe(Default = true)]
     pub minify: bool,
+
+    // typst config
+    #[serde(default)]
+    pub typst: TypstConfig,
+
+    // tailwind config
+    #[serde(default)]
+    pub tailwind: TailwindConfig,
 }
 
 // `[serve]` in toml
@@ -181,7 +188,19 @@ pub struct ServeConfig {
     #[educe(Default = true)]
     pub watch: bool,
 }
-// `[tailwind]` in toml
+
+// `[build.typst]` in toml
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Default)]
+#[serde(deny_unknown_fields)]
+pub struct TypstConfig {
+    // The name of typst command
+    #[serde(default = "serde_defaults::build::typst::command")]
+    #[educe(Default = serde_defaults::build::typst::command())]
+    pub command: Vec<String>,
+}
+
+// `[build.tailwind]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
@@ -192,13 +211,13 @@ pub struct TailwindConfig {
     pub enable: bool,
 
     // whether to enable tailwindcss support
-    #[serde(default = "serde_defaults::tailwind::input")]
-    #[educe(Default = serde_defaults::tailwind::input())]
+    #[serde(default = "serde_defaults::build::tailwind::input")]
+    #[educe(Default = serde_defaults::build::tailwind::input())]
     pub input: Option<PathBuf>,
 
     // The name of tailwind command
-    #[serde(default = "serde_defaults::tailwind::command")]
-    #[educe(Default = serde_defaults::tailwind::command())]
+    #[serde(default = "serde_defaults::build::tailwind::command")]
+    #[educe(Default = serde_defaults::build::tailwind::command())]
     pub command: Vec<String>,
 }
 
@@ -290,9 +309,6 @@ pub struct SiteConfig {
     pub serve: ServeConfig,
 
     #[serde(default)]
-    pub tailwind: TailwindConfig,
-
-    #[serde(default)]
     pub deploy: DeployConfig,
 
     #[serde(default)]
@@ -330,7 +346,7 @@ impl SiteConfig {
         }
 
         Self::update_option(&mut self.build.minify, cli.minify.as_ref());
-        Self::update_option(&mut self.tailwind.enable, cli.tailwind.as_ref());
+        Self::update_option(&mut self.build.tailwind.enable, cli.tailwind.as_ref());
 
         match &cli.command {
             Commands::Init { name: Some(name) } => {
@@ -379,7 +395,7 @@ impl SiteConfig {
     #[rustfmt::skip]
     #[allow(unused)]
     pub fn validate(&self, cli: &Cli) -> Result<()> {
-        Self::check_command_installed("[build.typst_command]", &self.build.typst_command);
+        Self::check_command_installed("[build.typst.command]", &self.build.typst.command);
         
         let root = self.get_root();
         let output_dir = self.build.output_dir.as_path();
@@ -391,17 +407,17 @@ impl SiteConfig {
             "[base.base_url] should start with `http://` or `https://`".into()
         ))}
 
-        if self.tailwind.enable {
-            Self::check_command_installed("[tailwind.command]", &self.tailwind.command);
+        if self.build.tailwind.enable {
+            Self::check_command_installed("[build.tailwind.command]", &self.build.tailwind.command);
 
-            match &self.tailwind.input {
-                None => bail!("[tailwind.enable] = true, but you didn't specify your tailwind input file"),
+            match &self.build.tailwind.input {
+                None => bail!("[build.tailwind.enable] = true, but you didn't specify your tailwind input file"),
                 Some(path) => {
                     if !path.exists() { bail!(ConfigError::Validation(
-                        "[tailwind.input] not exists".into()
+                        "[build.tailwind.input] not exists".into()
                     ))}
                     if !path.is_file() { bail!(ConfigError::Validation(
-                        "[tailwind.input] is not a file".into()
+                        "[build.tailwind.input] is not a file".into()
                     ))}
                 }
             }

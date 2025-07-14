@@ -14,7 +14,7 @@ pub fn log(module: &str, message: String) {
     use crossterm::{execute, terminal::{Clear, ClearType}, cursor::MoveUp};
 
     let module_lower = module.to_lowercase();
-    let is_important = matches!(module.to_lowercase().as_str(), "note" | "build" | "serve" | "watch" | "init" | "deploy" | "commit" | "git" | "error");
+    let not_important = matches!(module.to_lowercase().as_str(), "content" | "asset");
     
     let colored_prefix = match module_lower.as_str() {
         "serve" => format!("[{module}]").bright_blue().bold(),
@@ -26,7 +26,7 @@ pub fn log(module: &str, message: String) {
     let mut stdout = stdout().lock();
     execute!(stdout, Clear(ClearType::CurrentLine)).ok();
     writeln!(stdout, "{colored_prefix} {message}").ok();
-    if !is_important {
+    if not_important {
         execute!(stdout, MoveUp(1)).ok();
     }
     stdout.flush().ok();

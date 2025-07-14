@@ -9,7 +9,7 @@ macro_rules! run_command {
         use std::ffi::OsString;
         
         let args: Vec<OsString> = [$(into_arg($arg),)*].into_iter().filter(|a| !a.is_empty()).collect();
-        let command: Vec<OsString> = $command.iter().map(|a| into_arg(a)).collect();
+        let command: Vec<OsString> = $command.iter().map(into_arg).collect();
 
         run_command(None, &command, &args)
     }};
@@ -18,7 +18,7 @@ macro_rules! run_command {
         use std::ffi::OsString;
         
         let args: Vec<OsString> = [$(into_arg($arg),)*].into_iter().filter(|a| !a.is_empty()).collect();
-        let command: Vec<OsString> = $command.iter().map(|a| into_arg(a)).collect();
+        let command: Vec<OsString> = $command.iter().map(into_arg).collect();
 
         run_command(Some($root), &command, &args)
     }};
