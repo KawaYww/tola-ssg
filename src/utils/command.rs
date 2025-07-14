@@ -57,8 +57,13 @@ pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
         log!(name, "{line}");
     }
     for line in stderr_msg.lines().map(|s| s.trim()) {
-        // ignore warning from `typst` command, which will appear when enabling experimental `html` feature
+        // ignore useless warning from [build.typst.command], which will appear when enabling experimental `html` feature
         if line.starts_with("warning: html export is under active development and incomplete") {
+            break
+        }
+
+        // ignore useless warning from [build.tailwind.command]
+        if line.starts_with("≈ tailwindcss v") {
             break
         }
         log!(name, "{line}");

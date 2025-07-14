@@ -94,21 +94,10 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
     let output_dir = &config.build.output_dir;
 
     let asset_extension = asset_path.extension().unwrap_or_default().to_str().unwrap_or_default();
-    match asset_extension {
-        "css" if config.build.tailwind.enable => {
-            println!("{asset_path:?}");
-            run_command!(&config.build.tailwind.command; "")?;
-            // Command::new(config.tailwind.command[0].as_str());
-        },
-        _ => (),
-    }
-
     let relative_asset_path = asset_path
         .strip_prefix(assets_dir)?
         .to_str()
         .ok_or(anyhow!("Invalid path"))?;
-
-    PathBuf::from(relative_asset_path).extension().unwrap_or_default();
 
     let output_path = output_dir.join(relative_asset_path);
 
@@ -123,7 +112,23 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
     if should_wait_until_stable {
         wait_until_stable(asset_path, 5)?;
     }
-    fs::copy(asset_path, &output_path)?;
+
+    
+    match asset_extension {
+        "css" if config.build.tailwind.enable => {
+            let input = config.build.tailwind.input.as_ref().unwrap();
+            if input == asset_path {
+                run_command!(&config.build.tailwind.command;
+                    "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
+                )?;
+                // return Ok(())
+            }           
+        },
+        _ => {
+            fs::copy(asset_path, &output_path)?;
+        },
+    }
+
 
     log!("assets", "{}", relative_asset_path);
 

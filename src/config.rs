@@ -385,9 +385,9 @@ impl SiteConfig {
         self.build.assets_dir = root.join(&self.build.assets_dir);
         self.build.output_dir = root.join(&self.build.output_dir);
         
-        // if self.build.tailwind.enable {
-        //     self.build.tailwind.input 
-        // }
+        if self.build.tailwind.enable && let Some(input) = self.build.tailwind.input.as_ref() {
+            self.build.tailwind.input.replace(root.join(input));
+        }
 
         if let Some(token_path) = &self.deploy.github_provider.token_path {
             let path = shellexpand::tilde(token_path.to_str().unwrap());
