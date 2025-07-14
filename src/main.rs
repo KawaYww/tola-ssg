@@ -15,7 +15,6 @@ use config::SiteConfig;
 use deploy::deploy_site;
 use init::new_site;
 use serve::serve_site;
-use utils::check::check_required_command_installed;
 
 #[rustfmt::skip]
 #[tokio::main]
@@ -32,8 +31,6 @@ async fn main() -> Result<()> {
     };
 
     config.validate(cli)?;
-   
-    check_required_command_installed(config)?;
        
     match cli.command {
         Commands::Init { .. } => new_site(config)?,

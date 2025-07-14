@@ -6,10 +6,10 @@
 // Fucking ! !
 // Fucking ! ! ! !
 
-use std::{fs, path::Path, process::{Command, Output}};
+use std::{fs, path::Path};
 use anyhow::{anyhow, bail, Context, Result};
 use gix::{bstr::BString, commit::NO_PARENT_IDS, index::{entry::{Flags, Mode, Stat}, fs::Metadata, State}, objs::{tree, Tree}, Repository};
-use crate::{config::SiteConfig, log};
+use crate::{config::SiteConfig, log, run_command};
 
 #[derive(Debug, Default)]
 struct Remotes(Vec<Remote>);
@@ -24,7 +24,7 @@ impl Remotes {
     fn new(repo: &Repository) -> Result<Self> {
         let root = repo.path().parent().unwrap();
 
-        let output = Command::new("git").args(["remote", "-v"]).current_dir(root).output()?;
+        let output = run_command!(root; ["git"]; "remote", "-v")?;
         let output = String::from_utf8(output.stdout)?;
         
         let remotes = output.lines().map(|line| {
@@ -117,29 +117,19 @@ pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
             .unwrap()
     );
 
-    let remote_args = [
+    run_command!(root; ["git"];
         "remote",
         if Remotes::new(repo)?.any(|remote| remote.name == "origin") { "set-url" } else { "add" },
         "origin",
-        remote_url.as_str()
-    ];
-    let push_args: Vec<&str> = [
+        &remote_url
+    )?;
+    run_command!(root; ["git"];
         "push",
         "--set-upstream",
         "origin",
         branch_in_config,
         if force { "-f" } else { "" }
-    ]
-    .into_iter()
-    .filter(|p| !p.is_empty())
-    .collect();
-
-
-    let remote_output = git_command(root, &remote_args)?;
-    log_git_output(remote_output)?;
-
-    let push_output = git_command(root, &push_args)?;
-    log_git_output(push_output)?;
+    )?;
 
     let remote_url_equals_config = Remotes::new(repo)?.any(|remote| remote.name == "origin" && remote.url == remote_url);
     if !remote_url_equals_config && !force {
@@ -186,20 +176,4 @@ fn build_tree_from_dir(root: &Path, repo: &Repository, index: &mut gix::index::S
 
     tree.entries.sort_by(|a, b| a.filename.cmp(&b.filename));
     Ok(tree)
-}
-
-fn git_command(root: &Path, args: &[&str]) -> Result<Output> {
-    let output = Command::new("git").args(args).current_dir(root).output()?;
-    Ok(output)
-}
-
-fn log_git_output(output: Output) -> Result<()> {
-    let (stdout_msg, stderr_msg) = (String::from_utf8(output.stdout)?, String::from_utf8(output.stderr)?);
-    for line in stdout_msg.lines().map(|s| s.trim()) {
-        log!("git", "{line}");
-    }
-    for line in stderr_msg.lines().map(|s| s.trim()) {
-        log!("git", "{line}");
-    }
-    Ok(())
 }

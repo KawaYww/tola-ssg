@@ -1,7 +1,7 @@
 use crate::{config::SiteConfig, log, utils::{build::{process_post, process_asset, process_files}, git}};
 use anyhow::{anyhow, Context, Result};
 use gix::Repository;
-use std::{fs, thread};
+use std::{ffi::OsStr, fs, thread};
 
 #[rustfmt::skip]
 pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Repository> {
@@ -22,7 +22,7 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
     };
 
 
-    thread::scope(|s| {
+    let repo = thread::scope(|s| -> Result<Repository> {
         // process all posts
         let posts_handle = s.spawn(|| 
             process_files(content_dir,  config, &|path| path.extension().is_some_and(|ext| ext == "typ"), &process_post)
@@ -39,10 +39,19 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
         posts_handle.join().map_err(|e| anyhow!("{e:?}"))??;
         assets_handle.join().map_err(|e| anyhow!("{e:?}"))??;
 
-        log!("build",
-            "successfully generated site in: {}", config.build.output_dir.display()
-        );
-
         Ok(repo)
-    })
+    })?;
+
+    let output_dir = fs::read_dir(&config.build.output_dir)?;
+    let file_num = output_dir.into_iter()
+        .filter_map(|p| p.ok())
+        .filter(|p| p.file_name() != OsStr::new(".git"))
+        .count();
+    if file_num == 0 {
+        log!("warn", "output directory is empty, maybe you write nothing or just a single post without `typ` extension?")
+    } else {
+        log!("build", "successfully generated site in: {}", config.build.output_dir.display());
+    }
+
+    Ok(repo)
 }

@@ -1,6 +1,6 @@
-use std::{fs, path::{Path, PathBuf}, process::Command};
+use std::{fs, path::{Path, PathBuf}};
 use anyhow::{anyhow, Context, Result};
-use crate::{config::SiteConfig, log};
+use crate::{config::SiteConfig, log, run_command};
 use crate::utils::watch::wait_until_stable;
 use rayon::prelude::*;
 
@@ -71,20 +71,11 @@ pub fn process_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
         output_path.join("index.html")
     };
 
-    let output = Command::new("typst")
-        .args(["compile", "--features", "html", "--format", "html"])
-        .arg("--font-path")
-        .arg(root)
-        .arg("--root")
-        .arg(root)
-        .arg(post_path)
-        .arg(&html_path)
-        .output()?;
-
-    if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("Failed to compile {}: {}", post_path.display(), error_msg);
-    }
+    run_command!(&config.build.typst_command;
+        "compile", "--features", "html", "--format", "html",
+        "--font-path", root, "--root", root,
+        post_path, &html_path
+    )?;
 
     if config.build.minify {
         let html_content = fs::read_to_string(&html_path)?;
@@ -103,7 +94,10 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
     let output_dir = &config.build.output_dir;
 
     match asset_path.extension().unwrap_or_default().to_str().unwrap_or_default() {
-        "css" => println!("{asset_path:?}"),
+        "css" if config.tailwind.enable => {
+            println!("{asset_path:?}")
+            // Command::new(config.tailwind.command[0].as_str());
+        },
         _ => (),
     }
 
@@ -133,5 +127,6 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
 
     Ok(())
 }
+
 
 

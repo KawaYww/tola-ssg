@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Result, Context, bail};
 use educe::Educe;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
@@ -35,7 +35,7 @@ pub mod serde_defaults {
         use std::path::PathBuf;
 
         pub fn language() -> String { "zh-Hans".into() }   
-        pub fn typst_command() -> String { "typst".into() }   
+        pub fn typst_command() -> Vec<String> { vec!["typst".into()] }
         pub fn root_path() -> Option<PathBuf> { None }
         pub fn content_dir() -> PathBuf { "content".into() }
         pub fn output_dir() -> PathBuf { "public".into() }
@@ -51,7 +51,7 @@ pub mod serde_defaults {
         use std::path::PathBuf;
 
         pub fn input() -> Option<PathBuf> { None }
-        pub fn command() -> String { "tailwindcss".into() }
+        pub fn command() -> Vec<String> { vec!["tailwindcss".into()] }
     }
 
     pub mod deploy {
@@ -153,7 +153,7 @@ pub struct BuildConfig {
     // The name of typst command
     #[serde(default = "serde_defaults::build::typst_command")]
     #[educe(Default = serde_defaults::build::typst_command())]
-    pub typst_command: String,
+    pub typst_command: Vec<String>,
 
     // Minify the html content
     #[serde(default = "serde_defaults::r#true")]
@@ -199,7 +199,7 @@ pub struct TailwindConfig {
     // The name of tailwind command
     #[serde(default = "serde_defaults::tailwind::command")]
     #[educe(Default = serde_defaults::tailwind::command())]
-    pub command: String,
+    pub command: Vec<String>,
 }
 
 // `[deploy]` in toml
@@ -379,6 +379,8 @@ impl SiteConfig {
     #[rustfmt::skip]
     #[allow(unused)]
     pub fn validate(&self, cli: &Cli) -> Result<()> {
+        Self::check_command_installed("[build.typst_command]", &self.build.typst_command);
+        
         let root = self.get_root();
         let output_dir = self.build.output_dir.as_path();
         let base_url = self.base.base_url.as_str();
@@ -390,6 +392,8 @@ impl SiteConfig {
         ))}
 
         if self.tailwind.enable {
+            Self::check_command_installed("[tailwind.command]", &self.tailwind.command);
+
             match &self.tailwind.input {
                 None => bail!("[tailwind.enable] = true, but you didn't specify your tailwind input file"),
                 Some(path) => {
@@ -422,5 +426,17 @@ impl SiteConfig {
 
         Ok(())
     }
+
+    fn check_command_installed(fields_in_config: &str, command: &[String]) -> Result<()> {
+        if command.is_empty() { bail!(ConfigError::Validation(
+            format!("{fields_in_config} should have at least one field")
+        ))}
+
+        let command = command[0].as_str();
+        which::which(command).with_context(|| format!("[checker] `{command}` not found. Please install `{command}` first"))?;
+
+        Ok(())
+    }
+
 }
 

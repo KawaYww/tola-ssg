@@ -1,3 +1,4 @@
+pub mod command;
 pub mod git;
 pub mod check;
 pub mod log;
