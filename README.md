@@ -56,10 +56,10 @@ Commands:
   help    Print this message or the help of the given subcommand(s)
 
 Options:
-  -r, --root <ROOT>          root directory path [default: ./]
-  -o, --output <OUTPUT>      Output directory path related to `root_dor` [default: public]
-  -c, --content <CONTENT>    Content directory path related to `root_dor` [default: content]
-  -a, --assets <ASSETS>      Assets directory path related to `root_dor` [default: assets]
+  -r, --root <ROOT>          root directory path
+  -o, --output <OUTPUT>      Output directory path related to `root_dor`
+  -c, --content <CONTENT>    Content directory path related to `root_dor`
+  -a, --assets <ASSETS>      Assets directory path related to `root_dor`
   -C, --config <CONFIG>      Config file path related to `root_dor` [default: tola.toml]
   -m, --minify <MINIFY>      Minify the html content [possible values: true, false]
   -t, --tailwind <TAILWIND>  enable tailwindcss support [possible values: true, false]
