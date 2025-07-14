@@ -381,6 +381,10 @@ impl SiteConfig {
         self.build.output_dir = root.join(&cli.output);
         self.build.assets_dir = root.join(&cli.assets);
 
+        // if self.build.tailwind.enable {
+        //     self.build.tailwind.input 
+        // }
+
         if let Some(token_path) = &self.deploy.github_provider.token_path {
             let path = shellexpand::tilde(token_path.to_str().unwrap());
             let path = PathBuf::from(path.into_owned());
@@ -390,6 +394,7 @@ impl SiteConfig {
                 Some(path.to_owned())
             }
         }
+
     }
     
     #[rustfmt::skip]
@@ -411,7 +416,7 @@ impl SiteConfig {
             Self::check_command_installed("[build.tailwind.command]", &self.build.tailwind.command);
 
             match &self.build.tailwind.input {
-                None => bail!("[build.tailwind.enable] = true, but you didn't specify your tailwind input file"),
+                None => bail!("[build.tailwind.enable] = true, but you didn't specify [build.tailwind.input] for input file"),
                 Some(path) => {
                     if !path.exists() { bail!(ConfigError::Validation(
                         "[build.tailwind.input] not exists".into()

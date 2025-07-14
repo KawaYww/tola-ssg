@@ -40,6 +40,7 @@ pub fn run_command(root: Option<&Path>, command: &[OsString], args: &[OsString])
     } else {
         Command::new(&command[0]).args(args).output()?
     };
+
     log_for_command(command[0].to_str().unwrap(), &output)?;
 
     Ok(output)
@@ -56,6 +57,10 @@ pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
         log!(name, "{line}");
     }
     for line in stderr_msg.lines().map(|s| s.trim()) {
+        // ignore warning from `typst` command, which will appear when enabling experimental `html` feature
+        if line.starts_with("warning: html export is under active development and incomplete") {
+            break
+        }
         log!(name, "{line}");
     }
     Ok(())

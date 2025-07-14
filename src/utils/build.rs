@@ -93,9 +93,11 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
     let assets_dir = &config.build.assets_dir;
     let output_dir = &config.build.output_dir;
 
-    match asset_path.extension().unwrap_or_default().to_str().unwrap_or_default() {
+    let asset_extension = asset_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+    match asset_extension {
         "css" if config.build.tailwind.enable => {
-            println!("{asset_path:?}")
+            println!("{asset_path:?}");
+            run_command!(&config.build.tailwind.command; "")?;
             // Command::new(config.tailwind.command[0].as_str());
         },
         _ => (),
