@@ -3,14 +3,17 @@ name = "tola"
 version = "0.5.0"
 edition = "2024"
 description = "A static site generator for typst-based blog"
-
 documentation = "https://github.com/kawayww/tola"
 homepage = "https://github.com/kawayww/tola"
 repository = "https://github.com/kawayww/tola"
-
 keywords = ["blog", "static", "typst", "ssg", "cli"]
 categories = ["command-line-utilities"]
 license = "MIT"
+exclude = [
+  "/target",
+  "/typst_blog",
+  "/a"
+]
 
 # Reduce the size of binary file
 [profile.release]
