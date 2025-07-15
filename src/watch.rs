@@ -12,23 +12,23 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
     let mut watcher =
         notify::recommended_watcher(tx).context("[watcher] Failed to create file watcher")?;
 
-    watcher.watch(&config.build.content_dir, RecursiveMode::Recursive)
+    watcher.watch(&config.build.content, RecursiveMode::Recursive)
         .with_context(|| format!(
             "[watcher] Failed to watch directory: {}",
-            config.build.content_dir.display()
+            config.build.content.display()
         ))?;
 
-    watcher.watch(&config.build.assets_dir, RecursiveMode::Recursive)
+    watcher.watch(&config.build.assets, RecursiveMode::Recursive)
         .with_context(|| format!(
             "[watcher] Failed to watch directory: {}",
-            config.build.assets_dir.display()
+            config.build.assets.display()
         ))?;
 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
 
     log!("watch",
-        "watching for changes in {}", config.build.content_dir.display()
+        "watching for changes in {}", config.build.content.display()
     );
 
     for res in rx {

@@ -5,33 +5,33 @@ use std::{ffi::OsStr, fs, thread};
 
 #[rustfmt::skip]
 pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Repository> {
-    let output_dir = &config.build.output_dir;
-    let content_dir = &config.build.content_dir;
-    let assets_dir = &config.build.assets_dir;
+    let output = &config.build.output;
+    let content = &config.build.content;
+    let assets = &config.build.assets;
 
     // Clear output directory and create git repo for deploying
-    let repo = match (output_dir.exists(), should_clear) {
+    let repo = match (output.exists(), should_clear) {
         (true, true) => {
-            fs::remove_dir_all(output_dir)
-                .with_context(|| format!("[builder] Failed to clear output directory: {}", output_dir.display()))?;
-            git::create_repo(output_dir)?
+            fs::remove_dir_all(output)
+                .with_context(|| format!("[builder] Failed to clear output directory: {}", output.display()))?;
+            git::create_repo(output)?
         },
-        (true, false) => git::open_repo(output_dir)?,
+        (true, false) => git::open_repo(output)?,
 
-        (false, _) => git::create_repo(output_dir)?,
+        (false, _) => git::create_repo(output)?,
     };
 
 
-    let repo = thread::scope(|s| -> Result<Repository> {
+    thread::scope(|s| -> Result<()> {
         // process all posts
         let posts_handle = s.spawn(|| 
-            process_files(content_dir,  config, &|path| path.extension().is_some_and(|ext| ext == "typ"), &process_post)
+            process_files(content,  config, &|path| path.extension().is_some_and(|ext| ext == "typ"), &process_post)
                 .context("Failed to compile all posts")
         );
 
         // process all assets
         let assets_handle = s.spawn(|| 
-            process_files(assets_dir,  config, &|_| true, &|path, config| process_asset(path, config, false))
+            process_files(assets,  config, &|_| true, &|path, config| process_asset(path, config, false))
                 .context("Failed to copy all assets")
         );
 
@@ -39,10 +39,10 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
         posts_handle.join().map_err(|e| anyhow!("{e:?}"))??;
         assets_handle.join().map_err(|e| anyhow!("{e:?}"))??;
 
-        Ok(repo)
+        Ok(())
     })?;
 
-    let output_dir = fs::read_dir(&config.build.output_dir)?;
+    let output_dir = fs::read_dir(&config.build.output)?;
     let file_num = output_dir.into_iter()
         .filter_map(|p| p.ok())
         .filter(|p| p.file_name() != OsStr::new(".git"))
@@ -50,7 +50,7 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
     if file_num == 0 {
         log!("warn", "output directory is empty, maybe you write nothing or just a single post without `typ` extension?")
     } else {
-        log!("build", "successfully generated site in: {}", config.build.output_dir.display());
+        log!("build", "successfully generated site in: {}", config.build.output.display());
     }
 
     Ok(repo)

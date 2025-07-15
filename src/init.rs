@@ -31,7 +31,7 @@ pub fn new_site(config: &'static SiteConfig) -> Result<()> {
     let repo = git::create_repo(root)?;       
     init_default_config(root)?;
     init_site_structure(root)?;
-    init_ignore_files(root, &[config.build.output_dir.as_path()])?;
+    init_ignore_files(root, &[config.build.output.as_path()])?;
     git::commit_all(&repo, "initial commit")?;
   
     Ok(())

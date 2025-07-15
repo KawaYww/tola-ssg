@@ -24,7 +24,7 @@ pub fn process_watched_files(files: &[PathBuf], config: &SiteConfig) -> Result<(
         .filter(|path|  path
             .strip_prefix(env::current_dir().unwrap())
             .unwrap()
-            .starts_with(&config.build.assets_dir)
+            .starts_with(&config.build.assets)
         )
         .collect();
 

@@ -28,17 +28,20 @@ pub mod serde_defaults {
     pub fn r#false() -> bool { false }
 
     pub mod base {
-        pub fn base_url() -> String { "https://bob-example.com".into() }   
+        use std::path::PathBuf;
+
+        pub fn url() -> String { "".into() }
+        pub fn path() -> PathBuf { "".into() }
     }
     
     pub mod build {
         use std::path::PathBuf;
 
         pub fn language() -> String { "zh-Hans".into() }   
-        pub fn root_path() -> Option<PathBuf> { None }
-        pub fn content_dir() -> PathBuf { "content".into() }
-        pub fn output_dir() -> PathBuf { "public".into() }
-        pub fn assets_dir() -> PathBuf { "assets".into() }
+        pub fn root() -> Option<PathBuf> { None }
+        pub fn content() -> PathBuf { "content".into() }
+        pub fn output() -> PathBuf { "public".into() }
+        pub fn assets() -> PathBuf { "assets".into() }
 
         pub mod typst {
             pub fn command() -> Vec<String> { vec!["typst".into()] }
@@ -98,15 +101,20 @@ pub struct BaseConfig {
     // description
     pub description: String,
 
-    // e.g., "https://kawayww.com"
-    #[serde(default = "serde_defaults::base::base_url")]
-    #[educe(Default = serde_defaults::base::base_url())]
-    pub base_url: String,
+    // e.g., "https://kawayww.com", for generating `rss.xml`/`atom.xl`, `sitemap.xml`
+    #[serde(default = "serde_defaults::base::url")]
+    #[educe(Default = serde_defaults::base::url())]
+    pub url: String,
+
+    // e.g., "myblog"
+    #[serde(default = "serde_defaults::base::path")]
+    #[educe(Default = serde_defaults::base::path())]
+    pub path: PathBuf,
 
     // e.g., "zh-Hans", "zh_CN", "en_US"
     #[serde(default = "serde_defaults::build::language")]
     #[educe(Default = serde_defaults::build::language())]
-    pub default_language: String,
+    pub language: String,
 
     #[serde(default)]
     pub copyright: String,
@@ -118,8 +126,8 @@ fn validate_base_config() {
         [base]
         title = "KawaYww"
         description = "KawaYww's Blog"
-        base_url = "https://kawayww.com"
-        default_language = "zh_Hans"
+        url = "https://kawayww.com"
+        language = "zh_Hans"
         copyright = "2025 KawaYww"    
     "#;
     let config: SiteConfig = toml::from_str(config).unwrap();
@@ -135,24 +143,24 @@ fn validate_base_config() {
 #[serde(default, deny_unknown_fields)]
 pub struct BuildConfig {
     // root directory path
-    #[serde(default = "serde_defaults::build::root_path")]
-    #[educe(Default = serde_defaults::build::root_path())]
-    pub root_path: Option<PathBuf>,
+    #[serde(default = "serde_defaults::build::root")]
+    #[educe(Default = serde_defaults::build::root())]
+    pub root: Option<PathBuf>,
 
     // Content directory path related to `root_dor`
-    #[serde(default = "serde_defaults::build::content_dir")]
-    #[educe(Default = serde_defaults::build::content_dir())]
-    pub content_dir: PathBuf,
+    #[serde(default = "serde_defaults::build::content")]
+    #[educe(Default = serde_defaults::build::content())]
+    pub content: PathBuf,
 
     // Output directory path related to `root_dor`
-    #[serde(default = "serde_defaults::build::output_dir")]
-    #[educe(Default = serde_defaults::build::output_dir())]
-    pub output_dir: PathBuf,
+    #[serde(default = "serde_defaults::build::output")]
+    #[educe(Default = serde_defaults::build::output())]
+    pub output: PathBuf,
 
     // Output directory path related to `root_dor`
-    #[serde(default = "serde_defaults::build::assets_dir")]
-    #[educe(Default = serde_defaults::build::assets_dir())]
-    pub assets_dir: PathBuf,
+    #[serde(default = "serde_defaults::build::assets")]
+    #[educe(Default = serde_defaults::build::assets())]
+    pub assets: PathBuf,
 
     // Minify the html content
     #[serde(default = "serde_defaults::r#true")]
@@ -331,11 +339,11 @@ impl SiteConfig {
     }
 
     pub fn get_root(&self) -> PathBuf {
-        self.build.root_path.clone().unwrap_or_default()
+        self.build.root.clone().unwrap_or_default()
     }
 
     pub fn set_root(&mut self, path: &Path) {
-        self.build.root_path = Some(path.to_path_buf())
+        self.build.root = Some(path.to_path_buf())
     }
 
     #[rustfmt::skip]
@@ -350,7 +358,7 @@ impl SiteConfig {
 
         match &cli.command {
             Commands::Init { name: Some(name) } => {
-                let root = if let Some(root) = &self.build.root_path {
+                let root = if let Some(root) = &self.build.root {
                     root.join(name)
                 } else {
                     name.clone()
@@ -377,13 +385,13 @@ impl SiteConfig {
 
     fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
         self.set_root(root);
-        Self::update_option(&mut self.build.content_dir, cli.content.as_ref());
-        Self::update_option(&mut self.build.assets_dir, cli.assets.as_ref());
-        Self::update_option(&mut self.build.output_dir, cli.output.as_ref());
+        Self::update_option(&mut self.build.content, cli.content.as_ref());
+        Self::update_option(&mut self.build.assets, cli.assets.as_ref());
+        Self::update_option(&mut self.build.output, cli.output.as_ref());
 
-        self.build.content_dir = root.join(&self.build.content_dir);
-        self.build.assets_dir = root.join(&self.build.assets_dir);
-        self.build.output_dir = root.join(&self.build.output_dir);
+        self.build.content = root.join(&self.build.content);
+        self.build.assets = root.join(&self.build.assets);
+        self.build.output = root.join(&self.build.output);
         
         if self.build.tailwind.enable && let Some(input) = self.build.tailwind.input.as_ref() {
             self.build.tailwind.input.replace(root.join(input));
@@ -407,13 +415,13 @@ impl SiteConfig {
         Self::check_command_installed("[build.typst.command]", &self.build.typst.command);
         
         let root = self.get_root();
-        let output_dir = self.build.output_dir.as_path();
-        let base_url = self.base.base_url.as_str();
+        let output = self.build.output.as_path();
+        let base = self.base.url.as_str();
         let token_path = self.deploy.github_provider.token_path.as_ref();
         let force = self.deploy.force;
         
-        if !base_url.starts_with("http") { bail!(ConfigError::Validation(
-            "[base.base_url] should start with `http://` or `https://`".into()
+        if !base.starts_with("http") { bail!(ConfigError::Validation(
+            "[base.url] should start with `http://` or `https://`".into()
         ))}
 
         if self.build.tailwind.enable {

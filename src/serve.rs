@@ -54,8 +54,8 @@ pub async fn start_server(config: &'static SiteConfig) -> Result<()> {
         .await
         .with_context(|| format!("[serve] Failed to bind to address {addr}"))?;
     let app = {
-        let base_path = config.build.output_dir.clone();
-        let serve_dir = ServeDir::new(&config.build.output_dir)
+        let base_path = config.build.output.clone();
+        let serve_dir = ServeDir::new(&config.build.output)
             .append_index_html_on_directories(false)
             .not_found_service(get(move |url| handle_path(url, base_path)));
         Router::new().fallback(get_service(serve_dir))

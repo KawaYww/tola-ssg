@@ -25,7 +25,7 @@ impl Remotes {
         let root = repo.path().parent().unwrap();
 
         let output = run_command!(root; ["git"]; "remote", "-v")?;
-        let output = String::from_utf8(output.stdout)?;
+        let output = str::from_utf8(&output.stdout)?;
         
         let remotes = output.lines().map(|line| {
             let parts: Vec<_> = line.split_whitespace().collect();

@@ -38,3 +38,4 @@ thiserror = "2.0.12"
 educe = "0.6.0"
 gix = { version = "0.72.1", default-features = true, features = ["basic"] }
 shellexpand = { version = "3.1.1", features = ["path", "tilde"] }
+quick-xml = "0.38.0"

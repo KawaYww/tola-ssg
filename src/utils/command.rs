@@ -1,5 +1,6 @@
 use std::{ffi::OsString, path::Path, process::{Command, Output}};
 use anyhow::Result;
+use gix::bstr::ByteSlice;
 use crate::log;
 
 #[macro_export]
@@ -46,27 +47,31 @@ pub fn run_command(root: Option<&Path>, command: &[OsString], args: &[OsString])
     Ok(output)
 }
 
+#[rustfmt::skip]
 pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
+    let (stdout, stderr) = (&output.stdout, &output.stderr);
+
     if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr);
+        let error_msg = str::from_utf8(stderr).unwrap();
         anyhow::bail!("Failed: {}", error_msg);
     }
 
-    let (stdout_msg, stderr_msg) = (String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-    for line in stdout_msg.lines().map(|s| s.trim()) {
-        log!(name, "{line}");
+    if starts_with(stdout, &[
+        "<!DOCTYPE html>",
+    ]) { return Ok(()) } else {
+        stdout.lines().map(|s| str::from_utf8(s.trim()).unwrap()).for_each(|s| log!(name, "{s}"));
     }
-    for line in stderr_msg.lines().map(|s| s.trim()) {
-        // ignore useless warning from [build.typst.command], which will appear when enabling experimental `html` feature
-        if line.starts_with("warning: html export is under active development and incomplete") {
-            break
-        }
 
-        // ignore useless warning from [build.tailwind.command]
-        if line.starts_with("≈ tailwindcss v") {
-            break
-        }
-        log!(name, "{line}");
+    if starts_with(stderr, &[
+        "warning: html export is under active development and incomplete",
+        "≈ tailwindcss v"
+    ]) { return Ok(()) } else {
+        stderr.lines().map(|s| str::from_utf8(s.trim()).unwrap()).for_each(|s| log!(name, "{s}"));
     }
+    
     Ok(())
+}
+
+fn starts_with(output: &[u8], text: &[&str]) -> bool {
+    text.iter().any(|s| output.starts_with_str(s))
 }
