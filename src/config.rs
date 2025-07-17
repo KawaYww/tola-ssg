@@ -147,22 +147,22 @@ pub struct BuildConfig {
     #[educe(Default = serde_defaults::build::root())]
     pub root: Option<PathBuf>,
 
-    // Content directory path related to `root_dor`
+    // content directory path related to `root`
     #[serde(default = "serde_defaults::build::content")]
     #[educe(Default = serde_defaults::build::content())]
     pub content: PathBuf,
 
-    // Output directory path related to `root_dor`
+    // output directory path related to `root`
     #[serde(default = "serde_defaults::build::output")]
     #[educe(Default = serde_defaults::build::output())]
     pub output: PathBuf,
 
-    // Output directory path related to `root_dor`
+    // assets directory path related to `root`
     #[serde(default = "serde_defaults::build::assets")]
     #[educe(Default = serde_defaults::build::assets())]
     pub assets: PathBuf,
 
-    // Minify the html content
+    // minify the html content
     #[serde(default = "serde_defaults::r#true")]
     #[educe(Default = true)]
     pub minify: bool,
@@ -412,6 +412,10 @@ impl SiteConfig {
     #[rustfmt::skip]
     #[allow(unused)]
     pub fn validate(&self, cli: &Cli) -> Result<()> {
+        if !self.get_root().join(cli.config.as_path()).exists() {
+            bail!("the config file didn't exist");
+        }
+        
         Self::check_command_installed("[build.typst.command]", &self.build.typst.command);
         
         let root = self.get_root();

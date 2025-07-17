@@ -1,6 +1,6 @@
 [package]
 name = "tola"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 description = "A static site generator for typst-based blog"
 documentation = "https://github.com/kawayww/tola"

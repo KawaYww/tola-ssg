@@ -21,7 +21,6 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
             fs::copy(&entry_path, &dest_path).with_context(|| {
                 format!("[Utils] Failed to copy {entry_path:?} to {dest_path:?}")
             })?;
-
             log!("assets", "{}", dest_path.display());
         }
     }
@@ -155,11 +154,15 @@ fn process_html(content: &[u8], config: &SiteConfig) -> Vec<u8> {
                 }
 
                 if config.build.tailwind.enable && let Some(input) = &config.build.tailwind.input {
-                    let base_path = &config.base.path;
-                    let assets = config.build.assets.as_path();
-                    let input = input.strip_prefix(assets).unwrap();
-                    let input = base_path.join(input);
-                    let input = PathBuf::from("/").join(input);
+                    let input = {
+                        let base_path = &config.base.path;
+                        let assets = config.build.assets.as_path().canonicalize().unwrap();
+                        let input = input.canonicalize().unwrap();
+                        let input = input.strip_prefix(assets).unwrap();
+                        // println!("{assets:?}, {input:?}");
+                        let input = base_path.join(input);
+                        PathBuf::from("/").join(input)
+                    };
                     let input = input.to_string_lossy();
                     let mut elem = BytesStart::new("link");
                     elem.push_attribute(("rel", "stylesheet"));
@@ -206,21 +209,24 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
         wait_until_stable(asset_path, 5)?;
     }
 
-    
     match asset_extension {
         "css" if config.build.tailwind.enable => {
             let input = config.build.tailwind.input.as_ref().unwrap();
+            let input = input.canonicalize().unwrap();
+            let asset_path = asset_path.canonicalize().unwrap();
             if input == asset_path {
-                run_command!(&config.build.tailwind.command;
+                let output_path = output.canonicalize().unwrap().join(relative_asset_path);
+                run_command!(config.get_root().as_path(); &config.build.tailwind.command;
                     "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
                 )?;
-            }           
+            } else {
+                fs::copy(asset_path, &output_path)?;
+            }
         },
         _ => {
             fs::copy(asset_path, &output_path)?;
         },
     }
-
 
     log!("assets", "{}", relative_asset_path);
 

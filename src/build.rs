@@ -16,8 +16,13 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
                 .with_context(|| format!("[builder] Failed to clear output directory: {}", output.display()))?;
             git::create_repo(output)?
         },
-        (true, false) => git::open_repo(output)?,
-
+        (true, false) => match git::open_repo(output) {
+            Ok(repo) => repo,
+            Err(_) => {
+                log!("git", "{output:?} is not a git repo, creating new now");
+                git::create_repo(output)?
+            }
+        },
         (false, _) => git::create_repo(output)?,
     };
 
