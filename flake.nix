@@ -1,30 +1,61 @@
 {
-  description = "Description for the project";
+  description = "A static site generator for typst-based blog, written in Rust";
 
   inputs = {
-    flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      imports = [
+      imports = [];
+      systems = [ 
+        "x86_64-linux" 
+        "aarch64-linux" 
+        "x86_64-darwin" 
+        "aarch64-darwin" 
+        "x86_64-windows"
       ];
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" "mingw64" ];
-      perSystem = { config, self', inputs', pkgs, system, ... }: {
-        packages = {
-          default = pkgs.callPackage ./default.nix { };
-          static = pkgs.pkgsStatic.callPackage ./default.nix { };
-          x86 = pkgs.pkgsCross.gnu64.callPackage ./default.nix { };
-          x86-static = pkgs.pkgsCross.gnu64.pkgsStatic.callPackage ./default.nix { };
-          aarch64 = pkgs.pkgsCross.aarch64-multiplatform.callPackage ./default.nix { };
-          aarch64-static = pkgs.pkgsCross.aarch64-multiplatform.pkgsStatic.callPackage ./default.nix { };
-          windows = pkgs.pkgsCross.mingwW64.callPackage ./default.nix { };
-          darwin = pkgs.pkgsCross.aarch64-darwin.callPackage ./default.nix { };
+      perSystem = { self', inputs', config, pkgs, lib, system, ... }:
+        let
+          overlayedPkgs = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };
+          rustStable = overlayedPkgs.rust-bin.stable.latest.minimal;
+          buildPackage = pkgs': 
+            pkgs'.rustPlatform.buildRustPackage rec {
+              pname = "tola";
+              version = "0.5.0";
+              cargo = rustStable;
+              rustc = rustStable;
+              src = ./.;
+              cargoLock.lockFile = src + /Cargo.lock;
+              doCheck = false;
+              meta = {
+                description = "A static site generator for typst-based blog, written in Rust";
+                homepage = "https://github.com/KawaYww/tola";
+                license = lib.licenses.mit;
+              };
+            };
+        in {
+          packages = {
+            default = buildPackage overlayedPkgs;
+            static = buildPackage overlayedPkgs.pkgsStatic;
+
+            x86 = buildPackage overlayedPkgs.pkgsCross.gnu64;
+            x86-static = buildPackage overlayedPkgs.pkgsCross.gnu64.pkgsStatic;
+
+            aarch64 = buildPackage overlayedPkgs.pkgsCross.aarch64-multiplatform;
+            aarch64-static = buildPackage overlayedPkgs.pkgsCross.aarch64-multiplatform.pkgsStatic;
+
+            windows = buildPackage overlayedPkgs.pkgsCross.mingwW64;
+            darwin = buildPackage overlayedPkgs.pkgsCross.aarch64-darwin;
+          };
         };
-        
-      };
-      flake = {
-      };
     };
 }
