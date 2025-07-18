@@ -35,9 +35,52 @@ The philosophy of Tola:
 
 ## Installation
 
-1. Typing `cargo install tola` to get `Tola`.
-2. Install the binary in [release page](https://github.com/KawaYww/tola/releases).
-3. For Nix users: A `flake.nix` already exists in the repo root.
+- `cargo install tola`
+- install the binary in [release page](https://github.com/KawaYww/tola/releases).
+- for nix users, a `flake.nix` already exists in the repo root, and you could use binary cache in [tola.cachix.org](https://tola.cachix.org):
+
+```nix
+# flake.nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    tola = {
+      url = "github:kawayww/tola";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # ...
+    # ...
+  }
+  # ...
+  # ...
+}
+```
+
+```nix
+# configuration.nix
+{ config, pkgs, inputs, ... }:
+
+{
+  nix.settings = {
+    substituters = [
+      "https://tola.cachix.org"
+      # ...
+      # ...
+    ];
+    trusted-public-keys = [
+      "tola.cachix.org-1:5hMwVpNfWcOlq0MyYuU9QOoNr6bRcRzXBMt/Ua2NbgA="
+      # ...
+      # ...
+    ];
+    environment.systemPackages = with pkgs; [
+      # ...
+      # ...
+    ] ++ [
+      inputs.tola.packages.${pkgs.system}.default
+    ];
+  }
+}
+```
 
 ## Usage
 
@@ -57,10 +100,10 @@ Commands:
 
 Options:
   -r, --root <ROOT>          root directory path
-  -o, --output <OUTPUT>      Output directory path related to `root_dor`
-  -c, --content <CONTENT>    Content directory path related to `root_dor`
-  -a, --assets <ASSETS>      Assets directory path related to `root_dor`
-  -C, --config <CONFIG>      Config file path related to `root_dor` [default: tola.toml]
+  -o, --output <OUTPUT>      Output directory path related to `root`
+  -c, --content <CONTENT>    Content directory path related to `root`
+  -a, --assets <ASSETS>      Assets directory path related to `root`
+  -C, --config <CONFIG>      Config file path related to `root` [default: tola.toml]
   -m, --minify <MINIFY>      Minify the html content [possible values: true, false]
   -t, --tailwind <TAILWIND>  enable tailwindcss support [possible values: true, false]
   -h, --help                 Print help

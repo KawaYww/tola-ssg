@@ -8,19 +8,19 @@ pub struct Cli {
     #[arg(short, long)]
     pub root: Option<PathBuf>,
 
-    /// Output directory path related to `root_dor`
+    /// Output directory path related to `root`
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Content directory path related to `root_dor`
+    /// Content directory path related to `root`
     #[arg(short, long)]
     pub content: Option<PathBuf>,
 
-    /// Assets directory path related to `root_dor`
+    /// Assets directory path related to `root`
     #[arg(short, long)]
     pub assets: Option<PathBuf>,
 
-    /// Config file path related to `root_dor`
+    /// Config file path related to `root`
     #[arg(short = 'C', long, default_value = "tola.toml")]
     pub config: PathBuf,
 
@@ -41,7 +41,7 @@ pub struct Cli {
 pub enum Commands {
     /// Init a template site
     Init {
-        /// the name(path) of site directory, related to `root_path`
+        /// the name(path) of site directory, related to `root`
         #[arg()]
         name: Option<PathBuf>,
     },
