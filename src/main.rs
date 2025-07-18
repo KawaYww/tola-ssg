@@ -7,6 +7,7 @@ mod serve;
 mod utils;
 mod watch;
 
+use std::path::Path;
 use anyhow::Result;
 use build::build_site;
 use clap::Parser;
@@ -21,7 +22,7 @@ use serve::serve_site;
 async fn main() -> Result<()> {
     let cli: &'static Cli = Box::leak(Box::new(Cli::parse()));
     let config: &'static SiteConfig = {
-        let root = cli.root.clone().unwrap_or("./".into());
+        let root = cli.root.as_deref().unwrap_or(Path::new("./"));
         let config_file = root.join(&cli.config);
         let mut config =
             if config_file.exists() { SiteConfig::from_file(&config_file)? }

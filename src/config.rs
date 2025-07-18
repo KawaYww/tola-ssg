@@ -338,8 +338,8 @@ impl SiteConfig {
         Self::from_str(&content)
     }
 
-    pub fn get_root(&self) -> PathBuf {
-        self.build.root.clone().unwrap_or_default()
+    pub fn get_root(&self) -> &Path {
+        self.build.root.as_deref().unwrap_or(Path::new("./"))
     }
 
     pub fn set_root(&mut self, path: &Path) {
@@ -348,10 +348,13 @@ impl SiteConfig {
 
     #[rustfmt::skip]
     pub fn update_with_cli(&mut self, cli: &Cli) {      
-        if let Some(root) = &cli.root {
-            self.update_path_with_root(root.as_path(), cli);
-            self.set_root(root);
-        }
+        let root = if let Some(root) = &cli.root {
+            root.to_owned()
+        } else {
+            self.get_root().to_owned()
+        };
+        self.set_root(&root);
+        self.update_path_with_root(&root, cli);
 
         Self::update_option(&mut self.build.minify, cli.minify.as_ref());
         Self::update_option(&mut self.build.tailwind.enable, cli.tailwind.as_ref());
@@ -398,15 +401,14 @@ impl SiteConfig {
         }
 
         if let Some(token_path) = &self.deploy.github_provider.token_path {
-            let path = shellexpand::tilde(token_path.to_str().unwrap());
-            let path = PathBuf::from(path.into_owned());
+            let path = shellexpand::tilde(token_path.to_str().unwrap()).into_owned();
+            let path = PathBuf::from(path);
             self.deploy.github_provider.token_path = if path.is_relative() {
                 Some(root.join(path))
             } else {
                 Some(path.to_owned())
-            }
+            };
         }
-
     }
     
     #[rustfmt::skip]

@@ -216,7 +216,7 @@ pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_s
             let asset_path = asset_path.canonicalize().unwrap();
             if input == asset_path {
                 let output_path = output.canonicalize().unwrap().join(relative_asset_path);
-                run_command!(config.get_root().as_path(); &config.build.tailwind.command;
+                run_command!(config.get_root(); &config.build.tailwind.command;
                     "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
                 )?;
             } else {
