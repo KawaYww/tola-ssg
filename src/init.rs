@@ -26,7 +26,7 @@ const DIRS: &[&str] = &[
 ];
 
 pub fn new_site(config: &'static SiteConfig) -> Result<()> {
-    let root = &config.get_root();
+    let root = config.get_root();
    
     let repo = git::create_repo(root)?;       
     init_default_config(root)?;

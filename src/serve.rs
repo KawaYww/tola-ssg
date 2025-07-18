@@ -9,33 +9,34 @@ use axum::{
     routing::{get, get_service},
 };
 use std::{
-    fs,
-    net::{IpAddr, SocketAddr},
-    path::PathBuf,
-    str::FromStr, time::Duration,
+    fs, net::{IpAddr, SocketAddr}, path::PathBuf, str::FromStr, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration
 };
 use tokio::{net::TcpListener, sync::oneshot};
 use tower_http::services::ServeDir;
 
 #[rustfmt::skip]
 pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
-    let (shutdown_tx, shutdown_rx) = oneshot::channel();
-
-    std::thread::spawn(move || watch_for_changes_blocking(config, shutdown_rx));
-
+    let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+    let server_ready = Arc::new(AtomicBool::new(false));
+    
     tokio::spawn({
-        let timeout_secs = 2;
-        let mut restart_flag = true;
-        async move { while restart_flag { match start_server(config).await {
-            Ok(()) => restart_flag = false,
-            Err(e) => {
-                log!("error", "failed to start server: {e:?}");
-                for i in (0..=timeout_secs).rev() {
-                    log!("serve", "automatically trying to start it again in {i} seconds");
-                    tokio::time::sleep(Duration::from_secs(i)).await;
-                }
+        let server_ready = Arc::clone(&server_ready);
+        async move { while let Err(e) = start_server(config, &server_ready).await {
+            log!("error", "failed to start server: {e:?}");
+            let timeout_secs = 2;
+            for i in (0..=timeout_secs).rev() {
+                log!("serve", "automatically trying to start it again in {i} seconds");
+                tokio::time::sleep(Duration::from_secs(i)).await;
             }
-        }}}
+        }}
+    });
+
+    std::thread::spawn(move || {
+        log!("watch", "waiting for server starting");
+        while !server_ready.load(Ordering::Acquire) {
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        watch_for_changes_blocking(config, &mut shutdown_rx).ok();
     });
 
     tokio::signal::ctrl_c().await?;
@@ -44,7 +45,7 @@ pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
     Ok(())
 }
 
-pub async fn start_server(config: &'static SiteConfig) -> Result<()> {
+pub async fn start_server(config: &'static SiteConfig, server_ready: &Arc<AtomicBool>) -> Result<()> {
     build_site(config, false)?;
 
     let interface = IpAddr::from_str(&config.serve.interface)?;
@@ -61,6 +62,7 @@ pub async fn start_server(config: &'static SiteConfig) -> Result<()> {
         Router::new().fallback(get_service(serve_dir))
     };
 
+    server_ready.store(true, Ordering::Release);
     log!("serve", "serving site on http://{}", addr);
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

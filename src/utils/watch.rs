@@ -4,12 +4,36 @@ use crate::config::SiteConfig;
 use super::build::{process_post, process_asset};
 use rayon::prelude::*;
 
-pub fn process_posts_in_parallel(files: &[&PathBuf], config: &SiteConfig) -> Result<()> {
-    files.par_iter().try_for_each(|path| process_post(path, config))
+pub fn process_watched_posts(files: &[&PathBuf], config: &SiteConfig) -> Result<()> {
+    let flag = config.get_root().starts_with("./");
+    
+    files
+        .par_iter()
+        .try_for_each(|path| {
+            let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
+            let path = if flag {
+                &Path::new("./").join(path)
+            } else {
+                path
+            };
+            process_post(path, config)
+        })
 }
 
-pub fn process_assets_in_parallel(files: &[&PathBuf], config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
-    files.par_iter().try_for_each(|path| process_asset(path, config, should_wait_until_stable))
+pub fn process_watched_assets(files: &[&PathBuf], config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
+    let flag = config.get_root().starts_with("./");
+
+    files
+        .par_iter()
+        .try_for_each(|path| {
+            let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
+            let path = if flag {
+                &Path::new("./").join(path)
+            } else {
+                path
+            };
+            process_asset(path, config, should_wait_until_stable)
+        })
 }
 
 #[rustfmt::skip]
@@ -19,17 +43,22 @@ pub fn process_watched_files(files: &[PathBuf], config: &SiteConfig) -> Result<(
         .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("typ"))
         .collect();
 
+    let flag = config.get_root().starts_with("./");
     let assets_files: Vec<_> = files
         .par_iter()
-        .filter(|path|  path
-            .strip_prefix(env::current_dir().unwrap())
-            .unwrap()
-            .starts_with(&config.build.assets)
-        )
+        .filter(|path|  {
+            let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
+            let path = if flag {
+                &Path::new("./").join(path)
+            } else {
+                path
+            };
+            path.starts_with(&config.build.assets)
+        })
         .collect();
 
-    if !posts_files.is_empty() { process_posts_in_parallel(&posts_files, config)? }
-    if !assets_files.is_empty() { process_assets_in_parallel(&assets_files, config, true)? }
+    if !posts_files.is_empty() { process_watched_posts(&posts_files, config)? }
+    if !assets_files.is_empty() { process_watched_assets(&assets_files, config, true)? }
 
     Ok(())
 }

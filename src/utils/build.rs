@@ -50,13 +50,13 @@ where
 }
 
 pub fn process_post(post_path: &Path, config: &SiteConfig) -> Result<()> {
-    let root = &config.get_root();
-    
+    let root = config.get_root();   
     let content = &config.build.content;
     let output = &config.build.output.join(&config.base.path);
 
+    // println!("{:?}, {:?}, {:?}, {:?}", root, content, output, post_path);
     let relative_post_path = post_path
-        .strip_prefix(content)?
+        .strip_prefix(content).context("AAA")?
         .to_str()
         .ok_or(anyhow!("Invalid path"))?
         .strip_suffix(".typ")
@@ -185,7 +185,7 @@ fn process_html(content: &[u8], config: &SiteConfig) -> Vec<u8> {
     writer.into_inner().into_inner()
 }
 
-pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {
+pub fn process_asset(asset_path: &Path, config: &SiteConfig, should_wait_until_stable: bool) -> Result<()> {   
     let assets = &config.build.assets;
     let output = &config.build.output.join(&config.base.path);
 

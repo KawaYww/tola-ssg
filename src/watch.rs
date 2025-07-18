@@ -1,11 +1,12 @@
 use crate::{config::SiteConfig, log, utils::watch::process_watched_files};
 use anyhow::{Context, Result};
+#[allow(unused_imports)]
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::{path::PathBuf, time::{Duration, Instant}};
 use tokio::sync::oneshot;
 
 #[rustfmt::skip]
-pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: oneshot::Receiver<()>) -> Result<()> {
+pub fn watch_for_changes_blocking(config: &'static SiteConfig, shutdown_rx: &mut oneshot::Receiver<()>) -> Result<()> {
     if !config.serve.watch { return Ok(()) }
     
     let (tx, rx) = std::sync::mpsc::channel();
@@ -17,19 +18,17 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
             "[watcher] Failed to watch directory: {}",
             config.build.content.display()
         ))?;
+    log!("watch", "watching for changes in {}", config.build.content.display());
 
     watcher.watch(&config.build.assets, RecursiveMode::Recursive)
         .with_context(|| format!(
             "[watcher] Failed to watch directory: {}",
             config.build.assets.display()
         ))?;
+    log!("watch", "watching for changes in {}", config.build.assets.display());
 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
-
-    log!("watch",
-        "watching for changes in {}", config.build.content.display()
-    );
 
     for res in rx {
         match res {
@@ -53,9 +52,9 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, mut shutdown_rx: 
     Ok(())
 }
 
-fn should_process_event(event: &Event) -> bool {
-    matches!(event.kind, EventKind::Any)
-    // matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_))
+fn should_process_event(_event: &Event) -> bool {
+    // true
+    matches!(_event.kind, EventKind::Modify(_) | EventKind::Create(_))
 }
 
 fn handle_files(paths: &[PathBuf], config: &SiteConfig) -> Result<()> {

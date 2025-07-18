@@ -1,6 +1,6 @@
 [package]
 name = "tola"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2024"
 description = "A static site generator for typst-based blog"
 documentation = "https://github.com/kawayww/tola"
@@ -12,7 +12,9 @@ license = "MIT"
 exclude = [
   "/target",
   "/typst_blog",
-  "/a"
+  "/a",
+  "/result",
+  "/screenshots",
 ]
 
 # Reduce the size of binary file
