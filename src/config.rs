@@ -28,20 +28,28 @@ pub mod serde_defaults {
     pub fn r#false() -> bool { false }
 
     pub mod base {
-        use std::path::PathBuf;
-
         pub fn url() -> String { "".into() }
-        pub fn path() -> PathBuf { "".into() }
     }
     
     pub mod build {
         use std::path::PathBuf;
 
-        pub fn language() -> String { "zh-Hans".into() }   
         pub fn root() -> Option<PathBuf> { None }
+        pub fn base_path() -> PathBuf { "".into() }
+        pub fn language() -> String { "zh-Hans".into() }   
         pub fn content() -> PathBuf { "content".into() }
         pub fn output() -> PathBuf { "public".into() }
         pub fn assets() -> PathBuf { "assets".into() }
+
+        #[allow(unused)]
+        pub mod slug {
+            use crate::config::SlugMode;
+
+            pub fn default() -> SlugMode { SlugMode::default() }
+            pub fn no() -> SlugMode { SlugMode::No }
+            pub fn safe() -> SlugMode { SlugMode::Safe }
+            pub fn on() -> SlugMode { SlugMode::On }
+        }
 
         pub mod typst {
             pub fn command() -> Vec<String> { vec!["typst".into()] }
@@ -90,6 +98,16 @@ pub mod serde_defaults {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub enum SlugMode {
+    On,
+
+    #[default]
+    Safe,
+
+    No,
+}
+
 // `[base]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
@@ -105,11 +123,6 @@ pub struct BaseConfig {
     #[serde(default = "serde_defaults::base::url")]
     #[educe(Default = serde_defaults::base::url())]
     pub url: String,
-
-    // e.g., "myblog"
-    #[serde(default = "serde_defaults::base::path")]
-    #[educe(Default = serde_defaults::base::path())]
-    pub path: PathBuf,
 
     // e.g., "zh-Hans", "zh_CN", "en_US"
     #[serde(default = "serde_defaults::build::language")]
@@ -147,6 +160,12 @@ pub struct BuildConfig {
     #[educe(Default = serde_defaults::build::root())]
     pub root: Option<PathBuf>,
 
+    // e.g., "myblog"
+    #[serde(default = "serde_defaults::build::base_path")]
+    #[educe(Default = serde_defaults::build::base_path())]
+    pub base_path: PathBuf,
+
+
     // content directory path related to `root`
     #[serde(default = "serde_defaults::build::content")]
     #[educe(Default = serde_defaults::build::content())]
@@ -167,6 +186,10 @@ pub struct BuildConfig {
     #[educe(Default = true)]
     pub minify: bool,
 
+    // should slug or not
+    #[serde(default)]
+    pub slug: SlugConfig,
+
     // typst config
     #[serde(default)]
     pub typst: TypstConfig,
@@ -176,25 +199,20 @@ pub struct BuildConfig {
     pub tailwind: TailwindConfig,
 }
 
-// `[serve]` in toml
+// `[build.typst]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
-pub struct ServeConfig {
-    // Interface to bind on
-    #[serde(default = "serde_defaults::serve::interface")]
-    #[educe(Default = serde_defaults::serve::interface())]
-    pub interface: String,
+pub struct SlugConfig {
+    // slugify the path or not
+    #[serde(default = "serde_defaults::build::slug::default")]
+    #[educe(Default = serde_defaults::build::slug::default())]
+    pub path: SlugMode,
 
-    // The port you should provide
-    #[serde(default = "serde_defaults::serve::port")]
-    #[educe(Default = serde_defaults::serve::port())]
-    pub port: u16,
-
-    // enable watch
-    #[serde(default = "serde_defaults::r#true")]
-    #[educe(Default = true)]
-    pub watch: bool,
+    // slugify the fragment or not
+    #[serde(default = "serde_defaults::build::slug::on")]
+    #[educe(Default = serde_defaults::build::slug::on())]
+    pub fragment: SlugMode,
 }
 
 // `[build.typst]` in toml
@@ -228,6 +246,28 @@ pub struct TailwindConfig {
     #[educe(Default = serde_defaults::build::tailwind::command())]
     pub command: Vec<String>,
 }
+
+// `[serve]` in toml
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Default)]
+#[serde(deny_unknown_fields)]
+pub struct ServeConfig {
+    // Interface to bind on
+    #[serde(default = "serde_defaults::serve::interface")]
+    #[educe(Default = serde_defaults::serve::interface())]
+    pub interface: String,
+
+    // The port you should provide
+    #[serde(default = "serde_defaults::serve::port")]
+    #[educe(Default = serde_defaults::serve::port())]
+    pub port: u16,
+
+    // enable watch
+    #[serde(default = "serde_defaults::r#true")]
+    #[educe(Default = true)]
+    pub watch: bool,
+}
+
 
 // `[deploy]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
