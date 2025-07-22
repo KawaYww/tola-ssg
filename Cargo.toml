@@ -1,8 +1,8 @@
 [package]
 name = "tola"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2024"
-description = "A static site generator for typst-based blog"
+description = "static site generator for typst-based blog"
 documentation = "https://github.com/kawayww/tola"
 homepage = "https://github.com/kawayww/tola"
 repository = "https://github.com/kawayww/tola"
@@ -45,3 +45,6 @@ gix = { version = "0.72.1", default-features = false, features = ["basic"] }
 shellexpand = { version = "3.1.1", features = ["path", "tilde"] }
 quick-xml = "0.38.0"
 slug = "0.1.6"
+usvg = "0.45.1"
+resvg = "0.45.1"
+ravif = { version = "0.12.0", default-features = false, features = ["asm", "threading"] }

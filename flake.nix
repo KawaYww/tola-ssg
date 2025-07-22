@@ -1,5 +1,5 @@
 {
-  description = "A static site generator for typst-based blog, written in Rust";
+  description = "static site generator for typst-based blog, written in Rust";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -30,12 +30,13 @@
           buildPackage = pkgs': 
             pkgs'.rustPlatform.buildRustPackage rec {
               pname = "tola";
-              version = "0.5.4";
+              version = "0.5.5";
               cargo = rustStable;
               rustc = rustStable;
               src = ./.;
               cargoLock.lockFile = src + /Cargo.lock;
               doCheck = false;
+              nativeBuildInputs = [ 'pkgs.nasm ];
               meta = {
                 description = "A static site generator for typst-based blog, written in Rust";
                 homepage = "https://github.com/KawaYww/tola";

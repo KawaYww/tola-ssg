@@ -92,7 +92,7 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
         }
         let mut file_list = String::new();
         if let Ok(entries) = fs::read_dir(&local_path) {
-            for entry in entries.filter_map(|e| e.ok()) {
+            for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 let href = format!("{}/{}", uri.path().trim_end_matches('/'), name);
                 file_list.push_str(&format!("<li><a href='{href}'>{name}</a></li>"));

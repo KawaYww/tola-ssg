@@ -1,4 +1,4 @@
-use crate::{config::SiteConfig, log, utils::{build::{process_post, process_asset, process_files}, git}};
+use crate::{config::SiteConfig, log, utils::{build::{process_content, process_asset, process_files}, git}};
 use anyhow::{anyhow, Context, Result};
 use gix::Repository;
 use std::{ffi::OsStr, fs, thread};
@@ -28,9 +28,9 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
 
 
     thread::scope(|s| -> Result<()> {
-        // process all posts
+        // process all posts and relative assets
         let posts_handle = s.spawn(|| 
-            process_files(content,  config, &|path| path.extension().is_some_and(|ext| ext == "typ"), &process_post)
+            process_files(content,  config, &|path| path.starts_with(content), &process_content)
                 .context("Failed to compile all posts")
         );
 
@@ -49,7 +49,7 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
 
     let output_dir = fs::read_dir(&config.build.output)?;
     let file_num = output_dir.into_iter()
-        .filter_map(|p| p.ok())
+        .flatten()
         .filter(|p| p.file_name() != OsStr::new(".git"))
         .count();
     if file_num == 0 {

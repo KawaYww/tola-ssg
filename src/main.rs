@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
        
     match cli.command {
         Commands::Init { .. } => new_site(config)?,
-        Commands::Build { .. } => { build_site(config, false)?; },
+        Commands::Build { .. } => { build_site(config, config.build.clear)?; },
         Commands::Deploy { .. } => deploy_site(config)?,
         Commands::Serve { .. } => serve_site(config).await?
     };

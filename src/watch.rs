@@ -57,7 +57,7 @@ fn should_process_event(_event: &Event) -> bool {
     matches!(_event.kind, EventKind::Modify(_) | EventKind::Create(_))
 }
 
-fn handle_files(paths: &[PathBuf], config: &SiteConfig) -> Result<()> {
+fn handle_files(paths: &[PathBuf], config: &'static SiteConfig) -> Result<()> {
     // log!("watcher", "Detected changes in: {:?}", paths);
     process_watched_files(paths, config).context("Failed to process changed files")
 }

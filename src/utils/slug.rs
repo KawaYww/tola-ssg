@@ -4,7 +4,7 @@ use rayon::prelude::*;
 
 const FORBIDDEN: &[char] = &['<', '>', ':', '|', '?', '*', '#', '\\', '(', ')', '[', ']', '\t', '\r', '\n'];
 
-pub fn slugify_fragment(text: &str, config: &SiteConfig) -> String {
+pub fn slugify_fragment(text: &str, config: &'static SiteConfig) -> String {
     let slug_mode = &config.build.slug.fragment;
     
     match slug_mode {
@@ -14,7 +14,7 @@ pub fn slugify_fragment(text: &str, config: &SiteConfig) -> String {
     }
 }
 
-pub fn slugify_path(path: impl AsRef<Path>, config: &SiteConfig) -> PathBuf {
+pub fn slugify_path(path: impl AsRef<Path>, config: &'static SiteConfig) -> PathBuf {
     let slug_mode = &config.build.slug.path;
     let path = path.as_ref();
     

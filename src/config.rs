@@ -53,6 +53,13 @@ pub mod serde_defaults {
 
         pub mod typst {
             pub fn command() -> Vec<String> { vec!["typst".into()] }
+            pub mod svg {
+                use crate::config::ExtractSvgType;
+
+                pub fn extract_type() -> ExtractSvgType { ExtractSvgType::default() }
+                pub fn inline_max_size() -> String { "20KB".into() }
+                pub fn dpi() -> f32 { 96. }
+            }
         }
 
         pub mod tailwind {
@@ -99,6 +106,7 @@ pub mod serde_defaults {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SlugMode {
     On,
 
@@ -106,6 +114,21 @@ pub enum SlugMode {
     Safe,
 
     No,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExtractSvgType {
+    Builtin,
+
+    Magick,
+
+    Ffmpeg,
+
+    JustSvg,
+
+    #[default]
+    Embedded,
 }
 
 // `[base]` in toml
@@ -186,6 +209,11 @@ pub struct BuildConfig {
     #[educe(Default = true)]
     pub minify: bool,
 
+    // Whether to clear output dir before generating site
+    #[serde(default = "serde_defaults::r#false")]
+    #[educe(Default = false)]
+    pub clear: bool,
+    
     // should slug or not
     #[serde(default)]
     pub slug: SlugConfig,
@@ -224,6 +252,31 @@ pub struct TypstConfig {
     #[serde(default = "serde_defaults::build::typst::command")]
     #[educe(Default = serde_defaults::build::typst::command())]
     pub command: Vec<String>,
+
+    // `[build.typst.svg]` part
+    #[serde(default)]
+    pub svg: TypstSvgConfig
+}
+
+// `[build.typst.svg]` in toml
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Default)]
+#[serde(deny_unknown_fields)]
+pub struct TypstSvgConfig {
+    // whether to extract a embedded svg into separate file, for smaller size && faster loading
+    #[serde(default = "serde_defaults::build::typst::svg::extract_type")]
+    #[educe(Default = serde_defaults::build::typst::svg::extract_type())]
+    pub extract_type: ExtractSvgType,
+
+    // The max size for inlining svg image
+    #[serde(default = "serde_defaults::build::typst::svg::inline_max_size")]
+    #[educe(Default = serde_defaults::build::typst::svg::inline_max_size())]
+    pub inline_max_size: String,
+
+    // The max size for inlining svg image
+    #[serde(default = "serde_defaults::build::typst::svg::dpi")]
+    #[educe(Default = serde_defaults::build::typst::svg::dpi())]
+    pub dpi: f32,
 }
 
 // `[build.tailwind]` in toml
@@ -386,6 +439,24 @@ impl SiteConfig {
         self.build.root = Some(path.to_path_buf())
     }
 
+    pub fn get_inline_max_size(&self) -> usize {
+        let inline_max_size = self.build.typst.svg.inline_max_size.as_str();
+        let per_size = if inline_max_size.ends_with("MB") {
+            1024 * 1024
+        } else if inline_max_size.ends_with("KB") {
+            1024
+        } else if inline_max_size.ends_with("B") {
+            1
+        } else {
+            unreachable!()
+        };
+        per_size * inline_max_size.trim_end_matches(|c: char| c.is_ascii_uppercase()).parse::<usize>().unwrap()
+    }
+
+    pub fn get_scale(&self) -> f32 {
+        self.build.typst.svg.dpi / 96.
+    }
+
     #[rustfmt::skip]
     pub fn update_with_cli(&mut self, cli: &Cli) {      
         let root = if let Some(root) = &cli.root {
@@ -398,6 +469,8 @@ impl SiteConfig {
 
         Self::update_option(&mut self.build.minify, cli.minify.as_ref());
         Self::update_option(&mut self.build.tailwind.enable, cli.tailwind.as_ref());
+
+        self.build.typst.svg.inline_max_size = self.build.typst.svg.inline_max_size.to_uppercase();
 
         match &cli.command {
             Commands::Init { name: Some(name) } => {
@@ -485,6 +558,11 @@ impl SiteConfig {
                 }
             }
         }
+
+        let is_valid_size = ["B", "KB", "MB"].iter().any(|s| self.build.typst.svg.inline_max_size.ends_with(s));
+        if !is_valid_size {bail!(ConfigError::Validation(
+            "The size must end with `B`, `KB`, `MB`".into()
+        ))}
 
         match cli.command {
             Commands::Init { .. } => {

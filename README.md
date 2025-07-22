@@ -6,12 +6,14 @@
 It handles the most tedious tasks unrelated to Typst itself.  
 
 e.g.,  
-- watching changes and recompile post  
-- local server for previewing  
-- preventing users from typing tedious/repetitive command which user doesn't matter
+- automatically extract embedded svg images for smaller size and faster loading
+- slugify the paths && fragments for posts
+- watch changes and recompile it 
+- local server for previewing the generated size
+- prevent users from typing repetitive command which user doesn't matter
 - built-in tailwind-css support, out of the box
-- deploying the generated blog to github/cloudflare/vercal page
-- providing typst template file with a small kernal, so that most people can customize their own site easily (in plan)
+- deploy the generated site to github/cloudflare/vercal page
+- provide template file with a small kernal, so that most people can customize their own site easily (in plan)
 
 *Note*: The release 0.5.0 is comming soon. (tailwindcss integration, github deployment)  
 
@@ -123,7 +125,7 @@ You should keep the directory structure identical to the below:
 ├── content
 │   ├── posts/
 │   ├── categories/
-│   ├── home.typ
+│   ├── index.typ
 │   ├── programming.typ
 ├── templates
 │   └── normal.typ
@@ -133,7 +135,7 @@ You should keep the directory structure identical to the below:
 
 Files under the `content/` directory are mapped to their respective routes:  
 e.g., `content/posts/examples/aaa.typ` -> `http://127.0.0.1:8282/posts/examples/aaa`  
-(`content/home.typ` will be specially compiled into `http://127.0.0.1:8282/index.html`)  
+(`content/index.typ` will be specially compiled into `http://127.0.0.1:8282/index.html`)  
 
 ```text
 http://127.0.0.1:8000:

@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::Path, process::{Command, Output}};
+use std::{ffi::OsString, path::Path, process::{ChildStdin, Command, Output, Stdio}};
 use anyhow::Result;
 use gix::bstr::ByteSlice;
 use crate::log;
@@ -25,6 +25,28 @@ macro_rules! run_command {
     }};
 }
 
+#[macro_export]
+macro_rules! run_command_with_stdin {
+    ($command:expr; $($arg:expr),*) => {{
+        use $crate::utils::command::{run_command_with_stdin, into_arg};
+        use std::ffi::OsString;
+        
+        let args: Vec<OsString> = [$(into_arg($arg),)*].into_iter().filter(|a| !a.is_empty()).collect();
+        let command: Vec<OsString> = $command.iter().map(into_arg).collect();
+
+        run_command_with_stdin(None, &command, &args)
+    }};
+    ($root:expr; $command:expr; $($arg:expr),*) => {{
+        use $crate::utils::command::{run_command_with_stdin, into_arg};
+        use std::ffi::OsString;
+        
+        let args: Vec<OsString> = [$(into_arg($arg),)*].into_iter().filter(|a| !a.is_empty()).collect();
+        let command: Vec<OsString> = $command.iter().map(into_arg).collect();
+
+        run_command_with_stdin(Some($root), &command, &args)
+    }};
+}
+
 
 pub fn into_arg<S>(arg: S) -> OsString
 where S: Into<OsString>,
@@ -35,16 +57,38 @@ where S: Into<OsString>,
 pub fn run_command(root: Option<&Path>, command: &[OsString], args: &[OsString]) -> Result<Output> {
     let command: Vec<OsString> = command.iter().map(into_arg).collect();
     let args: Vec<OsString> = [&command[1..], args].concat();
+    let command_name = command[0].to_str().unwrap();
 
-    let output = if let Some(root) = root {
-        Command::new(&command[0]).args(args).current_dir(root).output()?
+    let mut command =  Command::new(command_name);
+    let command = if let Some(root) = root {
+        command.args(args).current_dir(root)
     } else {
-        Command::new(&command[0]).args(args).output()?
+        command.args(args)
     };
 
-    log_for_command(command[0].to_str().unwrap(), &output)?;
+    let output = command.output()?;
+
+    log_for_command(command_name, &output)?;
 
     Ok(output)
+}
+
+pub fn run_command_with_stdin(root: Option<&Path>, command: &[OsString], args: &[OsString]) -> Result<ChildStdin> {
+    let command: Vec<OsString> = command.iter().map(into_arg).collect();
+    let args: Vec<OsString> = [&command[1..], args].concat();
+    let command_name = command[0].to_str().unwrap();
+
+    let mut command =  Command::new(command_name);
+    let command = if let Some(root) = root {
+        command.args(args).current_dir(root)
+    } else {
+        command.args(args)
+    };
+
+    let mut output = command.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+    let stdin = output.stdin.take().expect("handle present");
+
+    Ok(stdin)
 }
 
 #[rustfmt::skip]
