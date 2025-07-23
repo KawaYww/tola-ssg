@@ -2,7 +2,7 @@
 
 ## Introduction
 
-`Tola`: A static site generator for Typst-based blog.  
+`Tola`: static site generator for Typst-based blog.  
 It handles the most tedious tasks unrelated to Typst itself.  
 
 e.g.,  
