@@ -36,7 +36,7 @@
               src = ./.;
               cargoLock.lockFile = src + /Cargo.lock;
               doCheck = false;
-              nativeBuildInputs = [ 'pkgs.nasm ];
+              nativeBuildInputs = [ pkgs'.nasm ];
               meta = {
                 description = "A static site generator for typst-based blog, written in Rust";
                 homepage = "https://github.com/KawaYww/tola";
