@@ -8,7 +8,7 @@ mod utils;
 mod watch;
 
 use std::path::Path;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use build::build_site;
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -21,17 +21,26 @@ use serve::serve_site;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli: &'static Cli = Box::leak(Box::new(Cli::parse()));
+
     let config: &'static SiteConfig = {
         let root = cli.root.as_deref().unwrap_or(Path::new("./"));
-        let config_file = root.join(&cli.config);
+        let config = root.join(&cli.config);
         let mut config =
-            if config_file.exists() { SiteConfig::from_file(&config_file)? }
+            if config.exists() { SiteConfig::from_file(&config)? }
             else { SiteConfig::default() };
         config.update_with_cli(cli);
-        config.validate(cli)?;
+
+        let is_init_subcommand = matches!(cli.command, Commands::Init { .. });
+        let config_exists = config.get_root().join(cli.config.as_path()).exists();
+        match (is_init_subcommand, config_exists) {
+            (true, false) => (),
+            (true, true) => bail!("the config file exists, please remove the config file manually or init in other path"),
+            (false, false) => bail!("the config file didn't exist"),
+            (false, true) => config.validate(cli)?,
+        }
+
         Box::leak(Box::new(config))
     };
-
        
     match cli.command {
         Commands::Init { .. } => new_site(config)?,

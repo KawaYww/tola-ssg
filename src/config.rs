@@ -28,7 +28,7 @@ pub mod serde_defaults {
     pub fn r#false() -> bool { false }
 
     pub mod base {
-        pub fn url() -> String { "".into() }
+        pub fn url() -> Option<String> { None }
     }
     
     pub mod build {
@@ -145,7 +145,7 @@ pub struct BaseConfig {
     // e.g., "https://kawayww.com", for generating `rss.xml`/`atom.xl`, `sitemap.xml`
     #[serde(default = "serde_defaults::base::url")]
     #[educe(Default = serde_defaults::base::url())]
-    pub url: String,
+    pub url: Option<String>,
 
     // e.g., "zh-Hans", "zh_CN", "en_US"
     #[serde(default = "serde_defaults::build::language")]
@@ -535,13 +535,14 @@ impl SiteConfig {
         
         let root = self.get_root();
         let output = self.build.output.as_path();
-        let base = self.base.url.as_str();
         let token_path = self.deploy.github_provider.token_path.as_ref();
         let force = self.deploy.force;
         
-        if !base.starts_with("http") { bail!(ConfigError::Validation(
-            "[base.url] should start with `http://` or `https://`".into()
-        ))}
+        if let Some(base_url) = self.base.url.as_ref() && !base_url.starts_with("http") {
+            bail!(ConfigError::Validation(
+                "[base.url] should start with `http://` or `https://`".into()
+            ))
+        }
 
         if self.build.tailwind.enable {
             Self::check_command_installed("[build.tailwind.command]", &self.build.tailwind.command);

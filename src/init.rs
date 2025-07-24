@@ -1,10 +1,10 @@
 use std::{fs, path::{Path, PathBuf}};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::{config::SiteConfig, utils::git};
 
 // default ignored path
-const IGNORES: &[&str] = &[
+const IGNORE_FILES: &[&str] = &[
     ".gitignore",
     ".ignore",
 ];
@@ -50,13 +50,17 @@ fn init_default_config(root: &Path) -> Result<()> {
 fn init_site_structure(root: &Path) -> Result<()> {
     DIRS.par_iter().try_for_each(|path| {
         let path = root.join(path);
-        fs::create_dir_all(&path)
+        if path.exists() {
+            bail!("there already has path `{}` when you init site", path.display())
+        } else {
+            fs::create_dir_all(&path).context("")
+        }
     })?;
     Ok(())
 }
 
-fn init_ignore_files(root: &Path, ignore_paths: &[&Path]) -> Result<()> {
-    let ignore_paths = ignore_paths.iter().try_fold(String::new(),|sum, path| -> Result<String> {
+fn init_ignore_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<()> {
+    let paths_should_ignore = paths_should_ignore.iter().try_fold(String::new(),|sum, path| -> Result<String> {
         let path = path.strip_prefix(root)
             .with_context(|| format!("Failed to strip suffix: path: {path:?}, root: {root:?}"))?;
         let path = PathBuf::from("/").join(path);
@@ -65,9 +69,13 @@ fn init_ignore_files(root: &Path, ignore_paths: &[&Path]) -> Result<()> {
         Ok(sum + path + "\n")
     })?;
     
-    IGNORES.par_iter().try_for_each(|path| {
+    IGNORE_FILES.par_iter().try_for_each(|path| {
         let path = root.join(path);
-        fs::write(path, ignore_paths.as_str())
+        if path.exists() {
+            bail!("there already has path `{}` when you init site", path.display())
+        } else {
+            fs::write(path, paths_should_ignore.as_str()).context("")
+        }
     })?;
     
     Ok(())
