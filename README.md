@@ -1,10 +1,10 @@
-# Tola
+# tola-ssg
 
 (Still writing the document, releasing it shortly when I have some spare time)  
 
 ## Introduction
 
-`Tola`: static site generator for Typst-based blog.  
+`tola`: static site generator for Typst-based blog.  
 It handles the most tedious tasks unrelated to Typst itself.  
 
 e.g.,  
@@ -21,7 +21,7 @@ e.g.,
 
 ## Philosophy
 
-The philosophy of Tola:  
+The philosophy of `tola`:  
 **Please just focus on Typst itself**  
 
 `tola` helps you get closer!  
