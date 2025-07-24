@@ -30,7 +30,7 @@
           buildPackage = pkgs': 
             pkgs'.rustPlatform.buildRustPackage rec {
               pname = "tola";
-              version = "0.5.5";
+              version = "0.5.6";
               cargo = rustStable;
               rustc = rustStable;
               src = ./.;

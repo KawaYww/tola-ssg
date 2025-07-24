@@ -1,6 +1,6 @@
 use std::{env, fs, path::{Path, PathBuf}, thread, time::Duration};
-use anyhow::{bail, Result};
-use crate::config::SiteConfig;
+use anyhow::{anyhow, bail, Context, Result};
+use crate::{config::SiteConfig, run_command};
 use super::build::{process_content, process_asset};
 use rayon::prelude::*;
 
@@ -9,17 +9,35 @@ pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) 
     
     files
         .par_iter()
-        .for_each(|path| {
+        .try_for_each(|path| {
             let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
             let path = if flag {
                 &Path::new("./").join(path)
             } else {
                 path
             };
-            if let Ok(Some(handle)) = process_content(path, config) {
-                handle.join().ok();
+
+            match process_content(path, config) {
+                Ok(Some(handle)) => handle.join().ok().context(""),
+                Ok(None) => Ok(()),
+                Err(e) => Err(e),
             }
-        });
+        })?;
+
+    if config.build.tailwind.enable {
+        let input = config.build.tailwind.input.as_ref().unwrap();
+        let output = config.build.output.as_path();
+        let relative_asset_path = input
+            .strip_prefix(config.build.assets.as_path())?
+            .to_str()
+            .ok_or(anyhow!("Invalid path"))?;
+        let input = input.canonicalize().unwrap();
+        let output_path = output.canonicalize().unwrap().join(relative_asset_path);
+
+        run_command!(config.get_root(); &config.build.tailwind.command;
+            "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
+        )?;
+    }
 
     Ok(())
 }
@@ -29,17 +47,19 @@ pub fn process_watched_assets(files: &[&PathBuf], config: &'static SiteConfig, s
 
     files
         .par_iter()
-        .for_each(|path| {
+        .try_for_each(|path| {
             let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
             let path = if flag {
                 &Path::new("./").join(path)
             } else {
                 path
             };
-            if let Ok(Some(handle)) = process_asset(path, config, should_wait_until_stable) {
-                handle.join().ok();
+            match process_asset(path, config, should_wait_until_stable) {
+                Ok(Some(handle)) => handle.join().ok().context(""),
+                Ok(None) => Ok(()),
+                Err(e) => Err(e),
             }
-        });
+        })?;
 
     Ok(())
 }

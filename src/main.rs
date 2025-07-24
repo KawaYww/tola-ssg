@@ -28,10 +28,10 @@ async fn main() -> Result<()> {
             if config_file.exists() { SiteConfig::from_file(&config_file)? }
             else { SiteConfig::default() };
         config.update_with_cli(cli);
+        config.validate(cli)?;
         Box::leak(Box::new(config))
     };
 
-    config.validate(cli)?;
        
     match cli.command {
         Commands::Init { .. } => new_site(config)?,

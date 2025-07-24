@@ -99,13 +99,13 @@ pub fn process_content(content_path: &Path, config: &'static SiteConfig) -> Resu
         log!("content", "{}", relative_asset_path);
 
         let output = output.join(relative_asset_path);
-        fs::create_dir_all(output.parent().unwrap()).ok();
+        fs::create_dir_all(output.parent().unwrap()).unwrap();
         fs::copy(content_path, output)?;
 
         return Ok(None)
     }
     
-    // println!("{:?}, {:?}, {:?}, {:?}", root, content, output, post_path);
+    // println!("{:?}, {:?}, {:?}, {:?}", root, content, output, content_path);
     let relative_post_path = content_path
         .strip_prefix(content)?
         .to_str()
@@ -116,7 +116,7 @@ pub fn process_content(content_path: &Path, config: &'static SiteConfig) -> Resu
     log!("content", "{}", relative_post_path);
 
     let output = output.join(relative_post_path);
-    fs::create_dir_all(&output).ok();
+    fs::create_dir_all(&output).unwrap();
 
     let html_path = if content_path.file_name().is_some_and(|p| p == "index.typ") {
         config.build.output.join("index.html")
@@ -132,6 +132,7 @@ pub fn process_content(content_path: &Path, config: &'static SiteConfig) -> Resu
     )?;
 
     let html_content = output.stdout;
+    // println!("{}", str::from_utf8(&html_content).unwrap());
     let (handle, html_content) = process_html(&html_path, &html_content, config);
     
     let html_content = if config.build.minify {
@@ -175,18 +176,17 @@ pub fn process_asset(asset_path: &Path, config: &'static SiteConfig, should_wait
             let input = config.build.tailwind.input.as_ref().unwrap();
             let input = input.canonicalize().unwrap();
             let asset_path = asset_path.canonicalize().unwrap();
-            if input == asset_path {
-                let output_path = output.canonicalize().unwrap().join(relative_asset_path);
-                run_command!(config.get_root(); &config.build.tailwind.command;
-                    "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
-                )?;
-            } else {
-                fs::copy(asset_path, &output_path)?;
+            match input == asset_path {
+                true => {
+                    let output_path = output.canonicalize().unwrap().join(relative_asset_path);
+                    run_command!(config.get_root(); &config.build.tailwind.command;
+                        "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
+                    )?;
+                },
+                false => { fs::copy(asset_path, &output_path)?; }
             }
         },
-        _ => {
-            fs::copy(asset_path, &output_path)?;
-        },
+        _ => { fs::copy(asset_path, &output_path)?; },
     }
 
     Ok(None)
@@ -268,24 +268,22 @@ fn process_svg_in_html(html_path: &Path, cnt: &mut i32, reader: &mut Reader<&[u8
                 let height = height.parse::<f32>().unwrap();
                 let height = format!("{}pt", height + PADDING_TOP);
                 let height = height.as_bytes().to_vec().into();
-                Some(Attribute { key: attr.key, value: height })
+                Attribute { key: attr.key, value: height }
             }
             b"viewBox" => {
                 let viewbox_inner: Vec<_> = str::from_utf8(value).unwrap().split_whitespace().map(|x| x.parse::<f32>().unwrap()).collect();
                 let viewbox = format!("{} {} {} {}", viewbox_inner[0], viewbox_inner[1] - PADDING_TOP, viewbox_inner[2], viewbox_inner[3] + PADDING_BOTTOM + PADDING_TOP);
-                Some(Attribute { key: attr.key, value: viewbox.as_bytes().to_vec().into() })
+                Attribute { key: attr.key, value: viewbox.as_bytes().to_vec().into() }
             },
-            _ => Some(attr)
+            _ => attr
         }        
     })
-    .flatten()
     .collect();
 
     let mut svg_writer = Writer::new(Cursor::new(Vec::new()));
     svg_writer.write_event(Event::Start(BytesStart::new("svg").with_attributes(attrs))).unwrap();
     while let Ok(event) =  reader.read_event() {
         if let Event::End(e) = &event && e.name().as_ref() == b"svg" {
-            svg_writer.write_event(event).unwrap();
             break
         } else {
             svg_writer.write_event(event).unwrap();
@@ -313,7 +311,6 @@ fn process_svg_in_html(html_path: &Path, cnt: &mut i32, reader: &mut Reader<&[u8
     // let viewbox = format!("{} {} {} {}", 0, -PADDING_TOP, width, height + PADDING_BOTTOM + PADDING_TOP);
     // let usvg = String::new() + &usvg[..idx_1] + &format!(" viewbox=\"{viewbox}\" ") + &usvg[idx_2..];
 
-
     let (width, height) = get_size(&usvg).unwrap();
     let img_elem = {
         let svg_path = svg_path.strip_prefix(&config.build.output).unwrap();
@@ -329,7 +326,7 @@ fn process_svg_in_html(html_path: &Path, cnt: &mut i32, reader: &mut Reader<&[u8
     };
     writer.write_event(Event::Start(img_elem)).unwrap();
 
-    Some(Svg::new(usvg.into_bytes(), width as f32, height as f32))
+    Some(Svg::new(usvg.into_bytes(), width, height))
 }
 
 fn get_size(svg_data: &str) -> Option<(f32, f32)> {
@@ -347,7 +344,7 @@ fn get_size(svg_data: &str) -> Option<(f32, f32)> {
     Some((width, height))
 }
 
-// FUCKL the size of generated `.avif` is so big, FUCKING pure rust avif library
+// FUCK the size of generated `.avif` is so big, FUCKING pure rust avif library
 fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) {
     let scale = 1.;
     // let opt = usvg::Options::default();
@@ -379,7 +376,7 @@ fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) 
                 let mut child_stdin = run_command_with_stdin!(["magick"];
                     "-background", "none", "-", &svg_path
                 ).unwrap();
-                child_stdin.write_all(svg_data).ok();
+                child_stdin.write_all(svg_data).unwrap();
             },
             ExtractSvgType::Ffmpeg => {
                 let mut child_stdin = run_command_with_stdin!(["ffmpeg"];
@@ -395,7 +392,7 @@ fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) 
                     "-c:v", "libaom-av1",
                     "-y", &svg_path
                 ).unwrap();
-                child_stdin.write_all(svg_data).ok();
+                child_stdin.write_all(svg_data).unwrap();
             },
             ExtractSvgType::JustSvg => {
                 fs::write(&svg_path, svg_data).unwrap();

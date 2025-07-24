@@ -1,6 +1,5 @@
 use std::{ffi::OsString, path::Path, process::{ChildStdin, Command, Output, Stdio}};
 use anyhow::Result;
-use gix::bstr::ByteSlice;
 use crate::log;
 
 #[macro_export]
@@ -93,29 +92,28 @@ pub fn run_command_with_stdin(root: Option<&Path>, command: &[OsString], args: &
 
 #[rustfmt::skip]
 pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
-    let (stdout, stderr) = (&output.stdout, &output.stderr);
+    let (stdout, stderr) = (str::from_utf8(&output.stdout)?, str::from_utf8(&output.stderr).unwrap());
 
     if !output.status.success() {
-        let error_msg = str::from_utf8(stderr).unwrap();
-        anyhow::bail!("Failed: {}", error_msg);
+        anyhow::bail!("Failed: {}", stderr);
     }
 
     if starts_with(stdout, &[
         "<!DOCTYPE html>",
     ]) { return Ok(()) } else {
-        stdout.lines().map(|s| str::from_utf8(s.trim()).unwrap()).for_each(|s| log!(name, "{s}"));
+        stdout.lines().map(|s| s.trim()).for_each(|s| log!(name, "{s}"));
     }
 
     if starts_with(stderr, &[
         "warning: html export is under active development and incomplete",
         "≈ tailwindcss v"
     ]) { return Ok(()) } else {
-        stderr.lines().map(|s| str::from_utf8(s.trim()).unwrap()).for_each(|s| log!(name, "{s}"));
+        stderr.lines().map(|s| s.trim()).for_each(|s| log!(name, "{s}"));
     }
     
     Ok(())
 }
 
-fn starts_with(output: &[u8], text: &[&str]) -> bool {
-    text.iter().any(|s| output.starts_with_str(s))
+fn starts_with(output: &str, text: &[&str]) -> bool {
+    text.iter().any(|s| output.starts_with(s))
 }
