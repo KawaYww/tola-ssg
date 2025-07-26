@@ -73,8 +73,9 @@ pub async fn start_server(config: &'static SiteConfig, server_ready: &Arc<Atomic
 }
 
 async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
-    let request_path = uri.path().trim_start_matches('/');
-    let local_path = base_path.join(request_path);
+    let request_path = uri.path().trim_matches('/');
+    let request_path = urlencoding::decode(request_path).unwrap().into_owned();
+    let local_path = base_path.join(&request_path);
 
     if local_path.is_file() {
         return match fs::read_to_string(&local_path) {
@@ -83,6 +84,7 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
         };
     }
     if local_path.is_dir() {
+        println!("CCCC");
         let index_path = local_path.join("index.html");
         if index_path.is_file() {
             return match fs::read_to_string(&index_path) {
@@ -94,7 +96,7 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
         if let Ok(entries) = fs::read_dir(&local_path) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                let href = format!("{}/{}", uri.path().trim_end_matches('/'), name);
+                let href = format!("{}/{}", &request_path, name);
                 file_list.push_str(&format!("<li><a href='{href}'>{name}</a></li>"));
             }
             let html_content = Html(format!(r#"
@@ -105,11 +107,11 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
                         table {{ border-collapse: collapse; }} td {{ padding: 8px; }}
                     </style></head>
                     <body>
-                        <h1>Directory: {}</h1>
-                        {}
+                        <h1>Directory: {request_path}</h1>
+                        {file_list}
                     </body>
                 </html>
-            "#, uri.path(), file_list));
+            "#));
             return html_content.into_response();
         }
     }

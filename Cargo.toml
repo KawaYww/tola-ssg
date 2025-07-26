@@ -50,3 +50,4 @@ slug = "0.1.6"
 usvg = "0.45.1"
 resvg = "0.45.1"
 ravif = { version = "0.12.0", default-features = false, features = ["asm", "threading"] }
+urlencoding = "2.1.3"
