@@ -283,11 +283,10 @@ fn process_svg_in_html(html_path: &Path, cnt: &mut i32, reader: &mut Reader<&[u8
     let mut svg_writer = Writer::new(Cursor::new(Vec::new()));
     svg_writer.write_event(Event::Start(BytesStart::new("svg").with_attributes(attrs))).unwrap();
     while let Ok(event) =  reader.read_event() {
-        if let Event::End(e) = &event && e.name().as_ref() == b"svg" {
-            break
-        } else {
-            svg_writer.write_event(event).unwrap();
-        }
+        let should_break = matches!(&event, Event::End(e) if e.name().as_ref() == b"svg");
+        svg_writer.write_event(event).unwrap();
+    
+        if should_break { break }
     }
     let svg_data = svg_writer.into_inner().into_inner();
 
@@ -307,11 +306,8 @@ fn process_svg_in_html(html_path: &Path, cnt: &mut i32, reader: &mut Reader<&[u8
     let usvg_tree = usvg::Tree::from_data(&svg_data, &opt).unwrap();
     let write_opt = usvg::WriteOptions { indent: usvg::Indent::None, ..Default::default() };
     let usvg = usvg_tree.to_string(&write_opt);
-    // let (idx_1, idx_2) = (usvg.find("width").unwrap(), usvg.find("xmlns").unwrap());
-    // let viewbox = format!("{} {} {} {}", 0, -PADDING_TOP, width, height + PADDING_BOTTOM + PADDING_TOP);
-    // let usvg = String::new() + &usvg[..idx_1] + &format!(" viewbox=\"{viewbox}\" ") + &usvg[idx_2..];
 
-    let (width, height) = get_size(&usvg).unwrap();
+    let (width, height) = extract_svg_size(&usvg).unwrap();
     let img_elem = {
         let svg_path = svg_path.strip_prefix(&config.build.output).unwrap();
         let svg_path = PathBuf::from("/").join(svg_path);
@@ -329,7 +325,7 @@ fn process_svg_in_html(html_path: &Path, cnt: &mut i32, reader: &mut Reader<&[u8
     Some(Svg::new(usvg.into_bytes(), width, height))
 }
 
-fn get_size(svg_data: &str) -> Option<(f32, f32)> {
+fn extract_svg_size(svg_data: &str) -> Option<(f32, f32)> {
     let width_start = svg_data.find("width=\"")? + "width=\"".len();
     let width_end = svg_data[width_start..].find('"')? + width_start;
     let width_str = &svg_data[width_start..width_end];
@@ -346,7 +342,7 @@ fn get_size(svg_data: &str) -> Option<(f32, f32)> {
 
 // FUCK the size of generated `.avif` is so big, FUCKING pure rust avif library
 fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) {
-    let scale = 1.;
+    let scale = config.get_scale();
     // let opt = usvg::Options::default();
     let parent = html_path.parent().unwrap();
     let inline_max_size = config.get_inline_max_size();
@@ -374,7 +370,7 @@ fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) 
             ExtractSvgType::Embedded => unreachable!(),
             ExtractSvgType::Magick => {
                 let mut child_stdin = run_command_with_stdin!(["magick"];
-                    "-background", "none", "-", &svg_path
+                    "-background", "none", "-density", (scale * 96.).to_string(), "-", &svg_path
                 ).unwrap();
                 child_stdin.write_all(svg_data).unwrap();
             },
@@ -426,7 +422,7 @@ fn process_link_in_html(writer: &mut Writer<Cursor<Vec<u8>>>, elem: BytesStart<'
         let value = attr.value;
         if key.as_ref() == b"href" || key.as_ref() == b"src" {
             let value = {
-                let value = str::from_utf8(value.as_ref()).unwrap();
+                let value = str::from_utf8(value.as_ref()).unwrap_or_else(|_| panic!("The Link is empty"));
                 let value = match &value[0..=0] {
                     "/" => {
                         let base_path = PathBuf::from("/").join(config.build.base_path.as_path());

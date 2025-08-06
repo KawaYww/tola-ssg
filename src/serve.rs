@@ -84,7 +84,6 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
         };
     }
     if local_path.is_dir() {
-        println!("CCCC");
         let index_path = local_path.join("index.html");
         if index_path.is_file() {
             return match fs::read_to_string(&index_path) {

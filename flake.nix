@@ -30,7 +30,7 @@
           buildPackage = pkgs': 
             pkgs'.rustPlatform.buildRustPackage rec {
               pname = "tola";
-              version = "0.5.7";
+              version = "0.5.8";
               cargo = rustStable;
               rustc = rustStable;
               src = ./.;
@@ -38,7 +38,7 @@
               doCheck = false;
               nativeBuildInputs = [ pkgs'.nasm ];
               meta = {
-                description = "A static site generator for typst-based blog, written in Rust";
+                description = "static site generator for typst-based blog, written in Rust";
                 homepage = "https://github.com/KawaYww/tola";
                 license = lib.licenses.mit;
               };

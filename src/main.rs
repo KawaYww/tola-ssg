@@ -1,14 +1,13 @@
 mod build;
 mod cli;
-mod init;
-mod deploy;
 mod config;
+mod deploy;
+mod init;
 mod serve;
 mod utils;
 mod watch;
 
-use std::path::Path;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use build::build_site;
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -16,6 +15,7 @@ use config::SiteConfig;
 use deploy::deploy_site;
 use init::new_site;
 use serve::serve_site;
+use std::path::Path;
 
 #[rustfmt::skip]
 #[tokio::main]
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
 
         Box::leak(Box::new(config))
     };
-       
+
     match cli.command {
         Commands::Init { .. } => new_site(config)?,
         Commands::Build { .. } => { build_site(config, config.build.clear)?; },
