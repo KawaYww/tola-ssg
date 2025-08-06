@@ -31,6 +31,7 @@
             let
               app_deps = with pkgs'; [
                 libiconvReal
+                nasm
               ];
             in
             pkgs'.rustPlatform.buildRustPackage rec {
@@ -45,9 +46,10 @@
               src = ./.;
               cargoLock.lockFile = src + /Cargo.lock;
               doCheck = false;
+              enableParallelBuilding = true;
               buildInputs = app_deps;
-              nativeBuildInputs = with pkgs'; [
-                nasm
+              nativeBuildInputs = [
+                overlayedPkgs.nasm
               ];
               meta = {
                 description = "static site generator for typst-based blog, written in Rust";

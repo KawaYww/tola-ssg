@@ -26,5 +26,5 @@ jobs:
           ./#x86 \
           ./#x86-static \
           ./#aarch64 \
-          ./#aarch64-static
+          ./#aarch64-static \
           ./#darwin
