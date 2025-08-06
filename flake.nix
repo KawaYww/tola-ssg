@@ -27,8 +27,17 @@
             overlays = [ inputs.rust-overlay.overlays.default ];
           };
           rustStable = overlayedPkgs.rust-bin.stable.latest.minimal;
-          buildPackage = pkgs': 
+          buildPackage = pkgs':
+            let
+              app_deps = with pkgs'; [
+                libiconvReal
+              ];
+            in
             pkgs'.rustPlatform.buildRustPackage rec {
+              configurePhase = ''
+                export LIBRARY_PATH="${lib.makeLibraryPath app_deps}"
+              '';
+              
               pname = "tola";
               version = "0.5.8";
               cargo = rustStable;
@@ -36,7 +45,10 @@
               src = ./.;
               cargoLock.lockFile = src + /Cargo.lock;
               doCheck = false;
-              nativeBuildInputs = [ pkgs'.nasm ];
+              buildInputs = app_deps;
+              nativeBuildInputs = with pkgs'; [
+                nasm
+              ];
               meta = {
                 description = "static site generator for typst-based blog, written in Rust";
                 homepage = "https://github.com/KawaYww/tola";

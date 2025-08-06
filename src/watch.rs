@@ -18,14 +18,14 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, shutdown_rx: &mut
             "[watcher] Failed to watch directory: {}",
             config.build.content.display()
         ))?;
-    log!("watch", "watching for changes in {}", config.build.content.display());
+    log!("watch"; "watching for changes in {}", config.build.content.display());
 
     watcher.watch(&config.build.assets, RecursiveMode::Recursive)
         .with_context(|| format!(
             "[watcher] Failed to watch directory: {}",
             config.build.assets.display()
         ))?;
-    log!("watch", "watching for changes in {}", config.build.assets.display());
+    log!("watch"; "watching for changes in {}", config.build.assets.display());
 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
@@ -35,16 +35,16 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, shutdown_rx: &mut
             Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
                 last_event_time = Instant::now();
                 std::thread::spawn(move || if let Err(e) = handle_files(&event.paths, config) {
-                    log!("watch", "error: {:?}", e);
+                    log!("watch"; "error: {:?}", e);
                 });
             },
             Err(e) => {
-                log!("watch", "error: {:?}", e);
+                log!("watch"; "error: {:?}", e);
             },
         };
 
         if shutdown_rx.try_recv().is_ok() {
-            log!("watch", "received shutdown signal");
+            log!("watch"; "received shutdown signal");
             break;
         }
     }

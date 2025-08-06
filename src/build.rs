@@ -19,7 +19,7 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
         (true, false) => match git::open_repo(output) {
             Ok(repo) => repo,
             Err(_) => {
-                log!("git", "{output:?} is not a git repo, creating new now");
+                log!("git"; "{output:?} is not a git repo, creating new now");
                 git::create_repo(output)?
             }
         },
@@ -53,9 +53,9 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
         .filter(|p| p.file_name() != OsStr::new(".git"))
         .count();
     if file_num == 0 {
-        log!("warn", "output directory is empty, maybe you write nothing or just a single post without `typ` extension?")
+        log!("warn"; "output directory is empty, maybe you write nothing or just a single post without `typ` extension?")
     } else {
-        log!("build", "successfully generated site in: {}", config.build.output.display());
+        log!("build"; "successfully generated site in: {}", config.build.output.display());
     }
 
     Ok(repo)

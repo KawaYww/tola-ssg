@@ -15,10 +15,7 @@ struct Svg {
 
 impl Svg {
     pub fn new(data: Vec<u8>, width: f32, height: f32) -> Self {
-        Self {
-            data,
-            size: (width, height)
-        }
+        Self { data, size: (width, height) }
     }
 }
 
@@ -40,7 +37,7 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
             fs::copy(&entry_path, &dest_path).with_context(|| {
                 format!("[Utils] Failed to copy {entry_path:?} to {dest_path:?}")
             })?;
-            log!("assets", "{}", dest_path.display());
+            log!("assets"; "{}", dest_path.display());
         }
     }
 
@@ -96,7 +93,7 @@ pub fn process_content(content_path: &Path, config: &'static SiteConfig) -> Resu
             .to_str()
             .ok_or(anyhow!("Invalid path"))?;
 
-        log!("content", "{}", relative_asset_path);
+        log!(config.should_log_newline(); "content"; "{}", relative_asset_path);
 
         let output = output.join(relative_asset_path);
         fs::create_dir_all(output.parent().unwrap()).unwrap();
@@ -113,7 +110,7 @@ pub fn process_content(content_path: &Path, config: &'static SiteConfig) -> Resu
         .strip_suffix(".typ")
         .ok_or(anyhow!("Not a .typ file"))?;
 
-    log!("content", "{}", relative_post_path);
+    log!(config.should_log_newline(); "content"; "{}", relative_post_path);
 
     let output = output.join(relative_post_path);
     fs::create_dir_all(&output).unwrap();
@@ -155,7 +152,7 @@ pub fn process_asset(asset_path: &Path, config: &'static SiteConfig, should_wait
         .to_str()
         .ok_or(anyhow!("Invalid path"))?;
 
-    log!("assets", "{}", relative_asset_path);
+    log!(config.should_log_newline(); "assets"; "{}", relative_asset_path);
 
     let output_path = output.join(relative_asset_path);
 
@@ -350,7 +347,7 @@ fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) 
     svgs.par_iter().enumerate().for_each(move |(cnt, svg)| {
         let relative_path = html_path.strip_prefix(&config.build.output).unwrap().to_string_lossy();
         let relative_path = relative_path.trim_end_matches("index.html");
-        log!("svg", "in {relative_path}: compress svg-{cnt}");
+        log!("svg"; "in {relative_path}: compress svg-{cnt}");
 
         let svg_data = svg.data.as_slice();
 
@@ -412,7 +409,7 @@ fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) 
                 fs::write(&svg_path, img.avif_file).unwrap();
             }
         }
-        log!("svg", "in {relative_path}: finish compressing svg-{cnt}");
+        log!("svg"; "in {relative_path}: finish compressing svg-{cnt}");
     });
 }
 

@@ -101,14 +101,14 @@ pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
     if starts_with(stdout, &[
         "<!DOCTYPE html>",
     ]) { return Ok(()) } else {
-        stdout.lines().map(|s| s.trim()).for_each(|s| log!(name, "{s}"));
+        stdout.lines().map(|s| s.trim()).for_each(|s| log!(name; "{s}"));
     }
 
     if starts_with(stderr, &[
         "warning: html export is under active development and incomplete",
         "≈ tailwindcss v"
     ]) { return Ok(()) } else {
-        stderr.lines().map(|s| s.trim()).for_each(|s| log!(name, "{s}"));
+        stderr.lines().map(|s| s.trim()).for_each(|s| log!(name; "{s}"));
     }
     
     Ok(())

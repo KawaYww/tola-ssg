@@ -46,6 +46,10 @@ pub enum Commands {
         name: Option<PathBuf>,
     },
     
+    /// Deletes the output directory if there is one and rebuilds the site
+    Build {
+    },
+
     /// Serve the site. Rebuild and reload on change automatically
     Serve {
         /// Interface to bind on
@@ -62,13 +66,25 @@ pub enum Commands {
     },
 
     /// Deletes the output directory if there is one and rebuilds the site
-    Build {
-    },
-
-    /// Deletes the output directory if there is one and rebuilds the site
     Deploy {
         /// enable watch
         #[arg(short, long)]
         force: Option<bool>,
     },
+}
+
+#[allow(unused)]
+impl Cli {
+    pub fn is_init(&self) -> bool {
+        matches!(self.command, Commands::Init { .. })
+    }
+    pub fn is_build(&self) -> bool {
+        matches!(self.command, Commands::Build { .. })
+    }
+    pub fn is_serve(&self) -> bool {
+        matches!(self.command, Commands::Serve { .. })
+    }
+    pub fn is_deploy(&self) -> bool {
+        matches!(self.command, Commands::Deploy { .. })
+    }
 }

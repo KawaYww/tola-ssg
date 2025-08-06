@@ -400,6 +400,9 @@ pub struct VercalProvider {
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct SiteConfig {
+    #[serde(skip)]
+    pub cli: Option<&'static Cli>,
+    
     #[serde(default)]
     pub base: BaseConfig,
 
@@ -439,6 +442,14 @@ impl SiteConfig {
         self.build.root = Some(path.to_path_buf())
     }
 
+    pub fn get_cli(&self) -> &'static Cli {
+        self.cli.unwrap()
+    }
+
+    pub fn should_log_newline(&self) -> bool {
+        self.get_cli().is_serve() && self.serve.watch
+    }
+
     pub fn get_inline_max_size(&self) -> usize {
         let inline_max_size = self.build.typst.svg.inline_max_size.as_str();
         let per_size = if inline_max_size.ends_with("MB") {
@@ -458,14 +469,16 @@ impl SiteConfig {
     }
 
     #[rustfmt::skip]
-    pub fn update_with_cli(&mut self, cli: &Cli) {      
+    pub fn update_with_cli(&mut self, cli: &'static Cli) {      
+        self.cli = Some(cli);
+        
         let root = if let Some(root) = &cli.root {
             root.to_owned()
         } else {
             self.get_root().to_owned()
         };
         self.set_root(&root);
-        self.update_path_with_root(&root, cli);
+        self.update_path_with_root(&root);
 
         Self::update_option(&mut self.build.minify, cli.minify.as_ref());
         Self::update_option(&mut self.build.tailwind.enable, cli.tailwind.as_ref());
@@ -479,7 +492,7 @@ impl SiteConfig {
                 } else {
                     name.clone()
                 };
-                self.update_path_with_root(&root, cli);
+                self.update_path_with_root(&root);
             },
             Commands::Serve { interface, port, watch } => {
                 Self::update_option(&mut self.serve.interface, interface.as_ref());
@@ -499,7 +512,9 @@ impl SiteConfig {
         }
     }
 
-    fn update_path_with_root(&mut self, root: &Path, cli: &Cli) {
+    fn update_path_with_root(&mut self, root: &Path) {
+        let cli = self.get_cli();
+        
         self.set_root(root);
         Self::update_option(&mut self.build.content, cli.content.as_ref());
         Self::update_option(&mut self.build.assets, cli.assets.as_ref());
@@ -526,7 +541,9 @@ impl SiteConfig {
     
     #[rustfmt::skip]
     #[allow(unused)]
-    pub fn validate(&self, cli: &Cli) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
+        let cli = self.get_cli();
+        
         if !self.get_root().join(cli.config.as_path()).exists() {
             bail!("the config file didn't exist");
         }

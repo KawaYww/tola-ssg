@@ -22,17 +22,17 @@ pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
     tokio::spawn({
         let server_ready = Arc::clone(&server_ready);
         async move { while let Err(e) = start_server(config, &server_ready).await {
-            log!("error", "failed to start server: {e:?}");
+            log!("error"; "failed to start server: {e:?}");
             let timeout_secs = 2;
             for i in (0..=timeout_secs).rev() {
-                log!("serve", "automatically trying to start it again in {i} seconds");
+                log!("serve"; "automatically trying to start it again in {i} seconds");
                 tokio::time::sleep(Duration::from_secs(i)).await;
             }
         }}
     });
 
     std::thread::spawn(move || {
-        log!("watch", "waiting for server starting");
+        log!("watch"; "waiting for server starting");
         while !server_ready.load(Ordering::Acquire) {
             std::thread::sleep(Duration::from_secs(1));
         }
@@ -63,7 +63,7 @@ pub async fn start_server(config: &'static SiteConfig, server_ready: &Arc<Atomic
     };
 
     server_ready.store(true, Ordering::Release);
-    log!("serve", "serving site on http://{}", addr);
+    log!("serve"; "serving site on http://{}", addr);
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
@@ -126,5 +126,5 @@ async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await
         .expect("Failed to install CTRL+C signal handler");
-    log!("serve", "shutting down gracefully...");
+    log!("serve"; "shutting down gracefully...");
 }

@@ -73,7 +73,7 @@ pub fn commit_all(repo: &Repository, message: &str) -> Result<()> {
         parent_ids_or_empty(repo)?
     )?;
     
-    log!("commit", "in repo `{}`, commit id for blob: {commit_id:?}", root.display());
+    log!("commit"; "in repo `{}`, commit id for blob: {commit_id:?}", root.display());
     
     Ok(())
 }
@@ -91,7 +91,7 @@ fn parent_ids_or_empty(repo: &Repository) -> Result<Vec<gix::ObjectId>> {
 
 pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
     let remote_url = config.deploy.github_provider.url.as_str();
-    log!("git", "pushing to `{remote_url}`");
+    log!("git"; "pushing to `{remote_url}`");
     
     let root = repo.path().parent().unwrap();
     let token_path = config.deploy.github_provider.token_path.as_ref();

@@ -30,13 +30,12 @@ async fn main() -> Result<()> {
             else { SiteConfig::default() };
         config.update_with_cli(cli);
 
-        let is_init_subcommand = matches!(cli.command, Commands::Init { .. });
         let config_exists = config.get_root().join(cli.config.as_path()).exists();
-        match (is_init_subcommand, config_exists) {
+        match (cli.is_init(), config_exists) {
             (true, false) => (),
             (true, true) => bail!("the config file exists, please remove the config file manually or init in other path"),
             (false, false) => bail!("the config file didn't exist"),
-            (false, true) => config.validate(cli)?,
+            (false, true) => config.validate()?,
         }
 
         Box::leak(Box::new(config))
