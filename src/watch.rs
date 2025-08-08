@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 #[allow(unused_imports)]
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::{
-    path::PathBuf,
+    path::Path,
     time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
@@ -13,36 +13,20 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, shutdown_rx: &mut
     if !config.serve.watch { return Ok(()) }
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let mut watcher =
-        notify::recommended_watcher(tx).context("[watch] Failed to create file watcher")?;
+    let mut watcher = notify::recommended_watcher(tx).context("[watch] Failed to create file watcher")?;
 
-    watcher.watch(&config.build.content, RecursiveMode::Recursive)
-        .with_context(|| format!(
-            "[watch] Failed to watch directory: {}",
-            config.build.content.display()
-        ))?;
-    log!("watch"; "watching for changes in {}", config.build.content.display());
-
-    watcher.watch(&config.build.assets, RecursiveMode::Recursive)
-        .with_context(|| format!(
-            "[watch] Failed to watch directory: {}",
-            config.build.assets.display()
-        ))?;
-    log!("watch"; "watching for changes in {}", config.build.assets.display());
+    watch_directory(&mut watcher, "content", &config.build.content)?;
+    watch_directory(&mut watcher, "assets", &config.build.assets)?;
 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
 
     for res in rx {
         match res {
+            Err(e) => log!("watch"; "error: {:?}", e),
             Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
                 last_event_time = Instant::now();
-                std::thread::spawn(move || if let Err(e) = handle_files(&event.paths, config) {
-                    log!("watch"; "error: {:?}; event kind: {:?}", e, event.kind);
-                });
-            },
-            Err(e) => {
-                log!("watch"; "error: {:?}", e);
+                handle_event(&event, config);
             },
         };
 
@@ -55,13 +39,29 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, shutdown_rx: &mut
     Ok(())
 }
 
+// Helper function to watch a directory and log it
+#[rustfmt::skip]
+fn watch_directory(
+    watcher: &mut impl Watcher,
+    name: &str,
+    path: &Path,
+) -> Result<()> {
+    watcher.watch(path, RecursiveMode::Recursive)
+        .with_context(|| format!("[watch] Failed to watch {name} directory: {}", path.display()))?;
+    log!("watch"; "watching for changes in {}: {}", name, path.display());
+    Ok(())
+}
+
 #[rustfmt::skip]
 fn should_process_event(event: &Event) -> bool {
     let kind = event.kind;
     matches!(kind, EventKind::Modify(_) | EventKind::Create(_)) && !matches!(kind, EventKind::Remove(_))
 }
 
-fn handle_files(paths: &[PathBuf], config: &'static SiteConfig) -> Result<()> {
-    // log!("watch"; "Detected changes in: {:?}", paths);
-    process_watched_files(paths, config).context("Failed to process changed files")
+#[rustfmt::skip]
+fn handle_event(event: &Event, config: &'static SiteConfig)  {
+    // log!("watch"; "Detected changes in: {:?}", event.paths);
+    if let Err(err) = process_watched_files(&event.paths, config).context("Failed to process changed files")  {
+        log!("watch"; "error: {:?}", err);
+    };
 }
