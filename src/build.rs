@@ -1,5 +1,12 @@
-use crate::{config::SiteConfig, log, utils::{build::{process_content, process_asset, process_files}, git}};
-use anyhow::{anyhow, Context, Result};
+use crate::{
+    config::SiteConfig,
+    log,
+    utils::{
+        build::{process_asset, process_content, process_files},
+        git,
+    },
+};
+use anyhow::{Context, Result, anyhow};
 use gix::Repository;
 use std::{ffi::OsStr, fs, thread};
 
@@ -13,7 +20,7 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
     let repo = match (output.exists(), should_clear) {
         (true, true) => {
             fs::remove_dir_all(output)
-                .with_context(|| format!("[builder] Failed to clear output directory: {}", output.display()))?;
+                .with_context(|| format!("[build] Failed to clear output directory: {}", output.display()))?;
             git::create_repo(output)?
         },
         (true, false) => match git::open_repo(output) {
@@ -29,14 +36,14 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
 
     thread::scope(|s| -> Result<()> {
         // process all posts and relative assets
-        let posts_handle = s.spawn(|| 
-            process_files(content,  config, &|path| path.starts_with(content), &process_content)
+        let posts_handle = s.spawn(||
+            process_files(content,  config, &|path| path.starts_with(content), &|path, config| process_content(path, config, false))
                 .context("Failed to compile all posts")
         );
 
         // process all assets
-        let assets_handle = s.spawn(|| 
-            process_files(assets,  config, &|_| true, &|path, config| process_asset(path, config, false))
+        let assets_handle = s.spawn(||
+            process_files(assets,  config, &|_| true, &|path, config| process_asset(path, config, false, false))
                 .context("Failed to copy all assets")
         );
 

@@ -1,28 +1,31 @@
-use std::{env, fs, path::{Path, PathBuf}, thread, time::Duration};
-use anyhow::{anyhow, bail, Context, Result};
+use super::build::{process_asset, process_content};
 use crate::{config::SiteConfig, run_command};
-use super::build::{process_content, process_asset};
+use anyhow::{Context, Result, anyhow, bail};
 use rayon::prelude::*;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    thread,
+    time::Duration,
+};
 
 pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) -> Result<()> {
     let flag = config.get_root().starts_with("./");
-    
-    files
-        .par_iter()
-        .try_for_each(|path| {
-            let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
-            let path = if flag {
-                &Path::new("./").join(path)
-            } else {
-                path
-            };
 
-            match process_content(path, config) {
-                Ok(Some(handle)) => handle.join().ok().context(""),
-                Ok(None) => Ok(()),
-                Err(e) => Err(e),
-            }
-        })?;
+    files.par_iter().try_for_each(|path| {
+        let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
+        let path = if flag {
+            &Path::new("./").join(path)
+        } else {
+            path
+        };
+
+        match process_content(path, config, true) {
+            Ok(Some(handle)) => handle.join().ok().context(""),
+            Ok(None) => Ok(()),
+            Err(e) => Err(e),
+        }
+    })?;
 
     if config.build.tailwind.enable {
         let input = config.build.tailwind.input.as_ref().unwrap();
@@ -42,11 +45,16 @@ pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) 
     Ok(())
 }
 
-pub fn process_watched_assets(files: &[&PathBuf], config: &'static SiteConfig, should_wait_until_stable: bool) -> Result<()> {
+pub fn process_watched_assets(
+    files: &[&PathBuf],
+    config: &'static SiteConfig,
+    should_wait_until_stable: bool,
+) -> Result<()> {
     let flag = config.get_root().starts_with("./");
 
     files
         .par_iter()
+        .filter(|path| path.exists())
         .try_for_each(|path| {
             let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
             let path = if flag {
@@ -54,7 +62,7 @@ pub fn process_watched_assets(files: &[&PathBuf], config: &'static SiteConfig, s
             } else {
                 path
             };
-            match process_asset(path, config, should_wait_until_stable) {
+            match process_asset(path, config, should_wait_until_stable, true) {
                 Ok(Some(handle)) => handle.join().ok().context(""),
                 Ok(None) => Ok(()),
                 Err(e) => Err(e),
@@ -68,7 +76,7 @@ pub fn process_watched_assets(files: &[&PathBuf], config: &'static SiteConfig, s
 pub fn process_watched_files(files: &[PathBuf], config: &'static SiteConfig) -> Result<()> {
     let posts_files: Vec<_> = files
         .par_iter()
-        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("typ"))
+        .filter(|path| path.exists() && path.extension().and_then(|s| s.to_str()) == Some("typ"))
         .collect();
 
     let flag = config.get_root().starts_with("./");
@@ -96,7 +104,7 @@ pub fn wait_until_stable(path: &Path, max_retries: usize) -> Result<()> {
     let mut last_size = fs::metadata(path)?.len();
     let mut retries = 0;
     let timeout = Duration::from_millis(50);
-    
+
     while retries < max_retries {
         thread::sleep(timeout);
         let current_size = fs::metadata(path)?.len();
@@ -107,4 +115,3 @@ pub fn wait_until_stable(path: &Path, max_retries: usize) -> Result<()> {
 
     bail!("File did not stabilize after {} retries", max_retries);
 }
-

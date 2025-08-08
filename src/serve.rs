@@ -1,6 +1,4 @@
-use crate::{
-    build::build_site, config::SiteConfig, log, watch::watch_for_changes_blocking
-};
+use crate::{build::build_site, config::SiteConfig, log, watch::watch_for_changes_blocking};
 use anyhow::{Context, Result, anyhow};
 use axum::{
     Router,
@@ -9,7 +7,15 @@ use axum::{
     routing::{get, get_service},
 };
 use std::{
-    fs, net::{IpAddr, SocketAddr}, path::PathBuf, str::FromStr, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration
+    fs,
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    str::FromStr,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 use tokio::{net::TcpListener, sync::oneshot};
 use tower_http::services::ServeDir;
@@ -18,7 +24,7 @@ use tower_http::services::ServeDir;
 pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     let server_ready = Arc::new(AtomicBool::new(false));
-    
+
     tokio::spawn({
         let server_ready = Arc::clone(&server_ready);
         async move { while let Err(e) = start_server(config, &server_ready).await {
@@ -45,7 +51,10 @@ pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
     Ok(())
 }
 
-pub async fn start_server(config: &'static SiteConfig, server_ready: &Arc<AtomicBool>) -> Result<()> {
+pub async fn start_server(
+    config: &'static SiteConfig,
+    server_ready: &Arc<AtomicBool>,
+) -> Result<()> {
     build_site(config, false)?;
 
     let interface = IpAddr::from_str(&config.serve.interface)?;
@@ -67,7 +76,7 @@ pub async fn start_server(config: &'static SiteConfig, server_ready: &Arc<Atomic
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .context("[server] failed to start")?;
+        .context("[serve] failed to start")?;
 
     Ok(())
 }
@@ -98,7 +107,8 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
                 let href = format!("{}/{}", &request_path, name);
                 file_list.push_str(&format!("<li><a href='{href}'>{name}</a></li>"));
             }
-            let html_content = Html(format!(r#"
+            let html_content = Html(format!(
+                r#"
                 <html>
                     <head><style>
                         * {{ background: #273748; color: white;  }}
@@ -110,7 +120,8 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
                         {file_list}
                     </body>
                 </html>
-            "#));
+            "#
+            ));
             return html_content.into_response();
         }
     }

@@ -1,17 +1,18 @@
-use anyhow::{Result, Context, bail};
+use crate::cli::{Cli, Commands};
+use anyhow::{Context, Result, bail};
 use educe::Educe;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
-use crate::cli::{Cli, Commands};
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("IO error when reading `{0}`")]
-    Io(
-        PathBuf,
-        #[source] std::io::Error,
-    ),
+    Io(PathBuf, #[source] std::io::Error),
 
     #[error("config file parsing error")]
     Toml(#[from] toml::de::Error),
@@ -22,85 +23,146 @@ pub enum ConfigError {
 
 // for default value in serde
 pub mod serde_defaults {
-    pub fn r#true() -> bool { true }
+    pub fn r#true() -> bool {
+        true
+    }
 
     #[allow(unused)]
-    pub fn r#false() -> bool { false }
+    pub fn r#false() -> bool {
+        false
+    }
 
     pub mod base {
-        pub fn url() -> Option<String> { None }
+        pub fn url() -> Option<String> {
+            None
+        }
     }
-    
+
     pub mod build {
         use std::path::PathBuf;
 
-        pub fn root() -> Option<PathBuf> { None }
-        pub fn base_path() -> PathBuf { "".into() }
-        pub fn language() -> String { "zh-Hans".into() }   
-        pub fn content() -> PathBuf { "content".into() }
-        pub fn output() -> PathBuf { "public".into() }
-        pub fn assets() -> PathBuf { "assets".into() }
+        pub fn root() -> Option<PathBuf> {
+            None
+        }
+        pub fn base_path() -> PathBuf {
+            "".into()
+        }
+        pub fn language() -> String {
+            "zh-Hans".into()
+        }
+        pub fn content() -> PathBuf {
+            "content".into()
+        }
+        pub fn output() -> PathBuf {
+            "public".into()
+        }
+        pub fn assets() -> PathBuf {
+            "assets".into()
+        }
 
         #[allow(unused)]
         pub mod slug {
             use crate::config::SlugMode;
 
-            pub fn default() -> SlugMode { SlugMode::default() }
-            pub fn no() -> SlugMode { SlugMode::No }
-            pub fn safe() -> SlugMode { SlugMode::Safe }
-            pub fn on() -> SlugMode { SlugMode::On }
+            pub fn default() -> SlugMode {
+                SlugMode::default()
+            }
+            pub fn no() -> SlugMode {
+                SlugMode::No
+            }
+            pub fn safe() -> SlugMode {
+                SlugMode::Safe
+            }
+            pub fn on() -> SlugMode {
+                SlugMode::On
+            }
         }
 
         pub mod typst {
-            pub fn command() -> Vec<String> { vec!["typst".into()] }
+            pub fn command() -> Vec<String> {
+                vec!["typst".into()]
+            }
             pub mod svg {
                 use crate::config::ExtractSvgType;
 
-                pub fn extract_type() -> ExtractSvgType { ExtractSvgType::default() }
-                pub fn inline_max_size() -> String { "20KB".into() }
-                pub fn dpi() -> f32 { 96. }
+                pub fn extract_type() -> ExtractSvgType {
+                    ExtractSvgType::default()
+                }
+                pub fn inline_max_size() -> String {
+                    "20KB".into()
+                }
+                pub fn dpi() -> f32 {
+                    96.
+                }
             }
         }
 
         pub mod tailwind {
             use std::path::PathBuf;
 
-            pub fn input() -> Option<PathBuf> { None }
-            pub fn command() -> Vec<String> { vec!["tailwindcss".into()] }
+            pub fn input() -> Option<PathBuf> {
+                None
+            }
+            pub fn command() -> Vec<String> {
+                vec!["tailwindcss".into()]
+            }
         }
     }
 
     pub mod serve {
-        pub fn interface() -> String { "127.0.0.1".into() }
-        pub fn port() -> u16 { 5277 }
+        pub fn interface() -> String {
+            "127.0.0.1".into()
+        }
+        pub fn port() -> u16 {
+            5277
+        }
     }
 
-
     pub mod deploy {
-        pub fn provider() -> String { "github".into() }
+        pub fn provider() -> String {
+            "github".into()
+        }
 
         pub mod github {
             use std::path::PathBuf;
 
-            pub fn url() -> String { "https://github.com/alice/alice.github.io".into() }
-            pub fn branch() -> String { "main".into() }
-            pub fn token_path() -> Option<PathBuf> { None }
+            pub fn url() -> String {
+                "https://github.com/alice/alice.github.io".into()
+            }
+            pub fn branch() -> String {
+                "main".into()
+            }
+            pub fn token_path() -> Option<PathBuf> {
+                None
+            }
         }
 
         pub mod cloudflare {
             use std::path::PathBuf;
 
-            pub fn _remote() -> String { "https://alice.com".into() }
-            pub fn _branch() -> String { "main".into() }
-            pub fn _token_path() -> PathBuf { "~/xxx/xxx/.github-token-in-this-file".into() }
+            pub fn _remote() -> String {
+                "https://alice.com".into()
+            }
+            pub fn _branch() -> String {
+                "main".into()
+            }
+            pub fn _token_path() -> PathBuf {
+                "~/xxx/xxx/.github-token-in-this-file".into()
+            }
         }
 
         pub mod vercal {
             use std::path::PathBuf;
 
-            pub fn _remote() -> String { "https://alice.com".into() }
-            pub fn _branch() -> String { "main".into() }
-            pub fn _token_path() -> PathBuf { "~/xxx/xxx/.github-token-in-this-file".into() }
+            pub fn _remote() -> String {
+                "https://alice.com".into()
+            }
+            pub fn _branch() -> String {
+                "main".into()
+            }
+            pub fn _token_path() -> PathBuf {
+                "~/xxx/xxx/.github-token-in-this-file".into()
+            }
         }
     }
 }
@@ -138,7 +200,7 @@ pub enum ExtractSvgType {
 pub struct BaseConfig {
     // title
     pub title: String,
-    
+
     // description
     pub description: String,
 
@@ -164,7 +226,7 @@ fn validate_base_config() {
         description = "KawaYww's Blog"
         url = "https://kawayww.com"
         language = "zh_Hans"
-        copyright = "2025 KawaYww"    
+        copyright = "2025 KawaYww"
     "#;
     let config: SiteConfig = toml::from_str(config).unwrap();
 
@@ -187,7 +249,6 @@ pub struct BuildConfig {
     #[serde(default = "serde_defaults::build::base_path")]
     #[educe(Default = serde_defaults::build::base_path())]
     pub base_path: PathBuf,
-
 
     // content directory path related to `root`
     #[serde(default = "serde_defaults::build::content")]
@@ -213,7 +274,7 @@ pub struct BuildConfig {
     #[serde(default = "serde_defaults::r#false")]
     #[educe(Default = false)]
     pub clear: bool,
-    
+
     // should slug or not
     #[serde(default)]
     pub slug: SlugConfig,
@@ -255,7 +316,7 @@ pub struct TypstConfig {
 
     // `[build.typst.svg]` part
     #[serde(default)]
-    pub svg: TypstSvgConfig
+    pub svg: TypstSvgConfig,
 }
 
 // `[build.typst.svg]` in toml
@@ -321,7 +382,6 @@ pub struct ServeConfig {
     pub watch: bool,
 }
 
-
 // `[deploy]` in toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
@@ -339,15 +399,15 @@ pub struct DeployConfig {
 
     // The git provider for deployment
     #[serde(rename = "github", default)]
-    pub github_provider: GithubProvider, 
+    pub github_provider: GithubProvider,
 
     // The cloudflare provider for deployment
     #[serde(rename = "cloudflare", default)]
-    pub cloudflare_provider: CloudflareProvider, 
+    pub cloudflare_provider: CloudflareProvider,
 
     // The vercal provider for deployment
     #[serde(rename = "vercal", default)]
-    pub vercal_provider: VercalProvider, 
+    pub vercal_provider: VercalProvider,
 }
 
 // `[deploy.git]` in toml
@@ -402,7 +462,7 @@ pub struct VercalProvider {
 pub struct SiteConfig {
     #[serde(skip)]
     pub cli: Option<&'static Cli>,
-    
+
     #[serde(default)]
     pub base: BaseConfig,
 
@@ -419,7 +479,6 @@ pub struct SiteConfig {
     pub extra: HashMap<String, toml::Value>,
 }
 
-
 impl SiteConfig {
     pub fn from_str(content: &str) -> Result<Self> {
         let config: SiteConfig = toml::from_str(content)?;
@@ -427,10 +486,8 @@ impl SiteConfig {
     }
 
     pub fn from_file(path: &Path) -> Result<Self> {
-        let content = fs::read_to_string(path).map_err(|err| ConfigError::Io (
-            path.to_path_buf(),
-            err
-        ))?;
+        let content =
+            fs::read_to_string(path).map_err(|err| ConfigError::Io(path.to_path_buf(), err))?;
         Self::from_str(&content)
     }
 
@@ -446,10 +503,6 @@ impl SiteConfig {
         self.cli.unwrap()
     }
 
-    pub fn should_log_newline(&self) -> bool {
-        self.get_cli().is_serve() && self.serve.watch
-    }
-
     pub fn get_inline_max_size(&self) -> usize {
         let inline_max_size = self.build.typst.svg.inline_max_size.as_str();
         let per_size = if inline_max_size.ends_with("MB") {
@@ -461,7 +514,11 @@ impl SiteConfig {
         } else {
             unreachable!()
         };
-        per_size * inline_max_size.trim_end_matches(|c: char| c.is_ascii_uppercase()).parse::<usize>().unwrap()
+        per_size
+            * inline_max_size
+                .trim_end_matches(|c: char| c.is_ascii_uppercase())
+                .parse::<usize>()
+                .unwrap()
     }
 
     pub fn get_scale(&self) -> f32 {
@@ -469,9 +526,9 @@ impl SiteConfig {
     }
 
     #[rustfmt::skip]
-    pub fn update_with_cli(&mut self, cli: &'static Cli) {      
+    pub fn update_with_cli(&mut self, cli: &'static Cli) {
         self.cli = Some(cli);
-        
+
         let root = if let Some(root) = &cli.root {
             root.to_owned()
         } else {
@@ -514,7 +571,7 @@ impl SiteConfig {
 
     fn update_path_with_root(&mut self, root: &Path) {
         let cli = self.get_cli();
-        
+
         self.set_root(root);
         Self::update_option(&mut self.build.content, cli.content.as_ref());
         Self::update_option(&mut self.build.assets, cli.assets.as_ref());
@@ -523,8 +580,10 @@ impl SiteConfig {
         self.build.content = root.join(&self.build.content);
         self.build.assets = root.join(&self.build.assets);
         self.build.output = root.join(&self.build.output);
-        
-        if self.build.tailwind.enable && let Some(input) = self.build.tailwind.input.as_ref() {
+
+        if self.build.tailwind.enable
+            && let Some(input) = self.build.tailwind.input.as_ref()
+        {
             self.build.tailwind.input.replace(root.join(input));
         }
 
@@ -538,23 +597,23 @@ impl SiteConfig {
             };
         }
     }
-    
+
     #[rustfmt::skip]
     #[allow(unused)]
     pub fn validate(&self) -> Result<()> {
         let cli = self.get_cli();
-        
+
         if !self.get_root().join(cli.config.as_path()).exists() {
             bail!("the config file didn't exist");
         }
-        
+
         Self::check_command_installed("[build.typst.command]", &self.build.typst.command);
-        
+
         let root = self.get_root();
         let output = self.build.output.as_path();
         let token_path = self.deploy.github_provider.token_path.as_ref();
         let force = self.deploy.force;
-        
+
         if let Some(base_url) = self.base.url.as_ref() && !base_url.starts_with("http") {
             bail!(ConfigError::Validation(
                 "[base.url] should start with `http://` or `https://`".into()
@@ -597,21 +656,23 @@ impl SiteConfig {
                 }
             },
             _ => ()
-        }      
+        }
 
         Ok(())
     }
 
     fn check_command_installed(fields_in_config: &str, command: &[String]) -> Result<()> {
-        if command.is_empty() { bail!(ConfigError::Validation(
-            format!("{fields_in_config} should have at least one field")
-        ))}
+        if command.is_empty() {
+            bail!(ConfigError::Validation(format!(
+                "{fields_in_config} should have at least one field"
+            )))
+        }
 
         let command = command[0].as_str();
-        which::which(command).with_context(|| format!("[checker] `{command}` not found. Please install `{command}` first"))?;
+        which::which(command).with_context(|| {
+            format!("[check] `{command}` not found. Please install `{command}` first")
+        })?;
 
         Ok(())
     }
-
 }
-
