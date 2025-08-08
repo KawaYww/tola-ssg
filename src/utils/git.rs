@@ -1,11 +1,10 @@
-// Fucking
+/// Fucking
 // Fucking
 //
 // Everyone holds hands to form a circle around `git subprocess` and dances.
 //
 // Fucking ! !
 // Fucking ! ! ! !
-
 use crate::{config::SiteConfig, log, run_command};
 use anyhow::{Context, Result, anyhow, bail};
 use gix::{

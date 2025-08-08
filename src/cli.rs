@@ -25,11 +25,11 @@ pub struct Cli {
     pub config: PathBuf,
 
     /// Minify the html content
-    #[arg(short, long)]
+    #[arg(short, long, action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true", require_equals = false)]
     pub minify: Option<bool>,
 
     /// enable tailwindcss support
-    #[arg(short, long)]
+    #[arg(short, long, action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true", require_equals = false)]
     pub tailwind: Option<bool>,
 
     /// subcommands
@@ -42,13 +42,11 @@ pub enum Commands {
     /// Init a template site
     Init {
         /// the name(path) of site directory, related to `root`
-        #[arg()]
         name: Option<PathBuf>,
     },
-    
+
     /// Deletes the output directory if there is one and rebuilds the site
-    Build {
-    },
+    Build {},
 
     /// Serve the site. Rebuild and reload on change automatically
     Serve {
@@ -61,14 +59,14 @@ pub enum Commands {
         port: Option<u16>,
 
         /// enable watch
-        #[arg(short, long)]
+        #[arg(short, long, action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true", require_equals = false)]
         watch: Option<bool>,
     },
 
     /// Deletes the output directory if there is one and rebuilds the site
     Deploy {
         /// enable watch
-        #[arg(short, long)]
+        #[arg(short, long, action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true", require_equals = false)]
         force: Option<bool>,
     },
 }
