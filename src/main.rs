@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod build;
 mod cli;
 mod config;
@@ -47,6 +49,9 @@ async fn main() -> Result<()> {
         Commands::Deploy { .. } => deploy_site(config)?,
         Commands::Serve { .. } => serve_site(config).await?
     };
+
+    // let rss_xml = crate::utils::rss::RSSChannel::new(config)?;
+    // rss_xml.write_to_file(&config.build.rss)?;
 
     Ok(())
 }

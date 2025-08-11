@@ -59,7 +59,7 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn collect_files<P>(dir: &Path, p: &P) -> Result<Vec<PathBuf>>
+pub fn collect_files<P>(dir: &Path, p: &P) -> Result<Vec<PathBuf>>
 where
     P: Fn(&PathBuf) -> bool,
 {
@@ -149,7 +149,6 @@ pub fn process_content(
     )?;
 
     let html_content = output.stdout;
-    // println!("{}", str::from_utf8(&html_content).unwrap());
     let (handle, html_content) = process_html(&html_path, &html_content, config)?;
 
     let html_content = if config.build.minify {
@@ -345,11 +344,7 @@ fn process_svg_in_html(
         let scale = config.get_scale();
         let attrs = [
             ("src", svg_path),
-            (
-                "style",
-                &format!("width:{}px;height:{}px;", (width / scale), (height / scale)),
-            ),
-            // ("style", &format!("width:{}pt;height:{}pt", width, (height + PADDING_BOTTOM + PADDING_TOP)))
+            ("style", &format!("width:{}px;height:{}px;", width / scale, height / scale)),
         ];
         BytesStart::new("img").with_attributes(attrs)
     };
@@ -527,7 +522,8 @@ fn process_link_attribute<'a>(
     let processed_value = match value_str.chars().next() {
         Some('/') => process_absolute_link(value_str, config)?,
         Some('#') => process_fragment_link(value_str, config)?,
-        _ => process_relative_or_external_link(value_str, config)?,
+        Some(_) => process_relative_or_external_link(value_str, config)?,
+        None => String::new(),
     };
     Ok(processed_value.into_bytes().into())
 }

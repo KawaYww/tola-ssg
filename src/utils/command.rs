@@ -107,13 +107,17 @@ pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
     let (stdout, stderr) = (str::from_utf8(&output.stdout)?.trim(), str::from_utf8(&output.stderr)?.trim());
 
     if !output.status.success() {
-        anyhow::bail!("Command failed: {}", stderr);
+        anyhow::bail!("Command `{name}` failed: {stderr}");
     }
 
     // Configurable ignore prefixes
-    let ignore_stdout = ["<!DOCTYPE html>"];
+    let ignore_stdout = [
+        "<!DOCTYPE html>",
+        "{\"",
+    ];
     let ignore_stderr = [
         "warning: html export is under active development and incomplete",
+        "warning: elem was ignored during paged export",
         "≈ tailwindcss v",
     ];
 

@@ -59,6 +59,9 @@ pub mod serde_defaults {
         pub fn assets() -> PathBuf {
             "assets".into()
         }
+        pub fn rss() -> PathBuf {
+            "rss.xml".into()
+        }
 
         #[allow(unused)]
         pub mod slug {
@@ -269,6 +272,11 @@ pub struct BuildConfig {
     #[serde(default = "serde_defaults::r#true")]
     #[educe(Default = true)]
     pub minify: bool,
+
+    // rss file path related to `root`
+    #[serde(default = "serde_defaults::build::rss")]
+    #[educe(Default = serde_defaults::build::rss())]
+    pub rss: PathBuf,
 
     // Whether to clear output dir before generating site
     #[serde(default = "serde_defaults::r#false")]
@@ -580,6 +588,7 @@ impl SiteConfig {
         self.build.content = root.join(&self.build.content);
         self.build.assets = root.join(&self.build.assets);
         self.build.output = root.join(&self.build.output);
+        self.build.rss = root.join(&self.build.rss);
 
         if self.build.tailwind.enable
             && let Some(input) = self.build.tailwind.input.as_ref()
