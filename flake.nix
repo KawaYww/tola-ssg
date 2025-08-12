@@ -1,5 +1,5 @@
 {
-  description = "static site generator for typst-based blog, written in Rust";
+  description = "static site generator for typst-based blog - keeping your focus on the content";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -40,7 +40,7 @@
               '';
               
               pname = "tola";
-              version = "0.5.9";
+              version = "0.5.10";
               cargo = rustStable;
               rustc = rustStable;
               src = ./.;
