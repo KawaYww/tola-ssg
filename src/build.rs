@@ -54,7 +54,7 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Rep
         Ok(())
     })?;
 
-    let file_num = fs::read_dir(&config.build.output)?.into_iter()
+    let file_num = fs::read_dir(&config.build.output)?
         .flatten()
         .filter(|p| p.file_name() != OsStr::new(".git"))
         .count();

@@ -5,20 +5,14 @@
 //
 // Fucking ! !
 // Fucking ! ! ! !
-use crate::{config::SiteConfig, log, run_command};
+use crate::{config::SiteConfig, init::init_ignore_files, log, run_command};
 use anyhow::{Context, Result, anyhow, bail};
 use gix::{
-    Repository,
-    bstr::BString,
-    commit::NO_PARENT_IDS,
-    index::{
-        State,
-        entry::{Flags, Mode, Stat},
-        fs::Metadata,
-    },
-    objs::{Tree, tree},
+    bstr::{BString, ByteSlice}, commit::NO_PARENT_IDS, glob::wildmatch, index::{
+        entry::{Flags, Mode, Stat}, fs::Metadata, State
+    }, objs::{tree, Tree}, path::into_bstr, Repository
 };
-use std::{fs, path::Path};
+use std::{fs, io::BufRead, path::{Path, PathBuf}};
 
 #[derive(Debug, Default)]
 struct Remotes(Vec<Remote>);
@@ -58,6 +52,9 @@ impl Remotes {
 
 pub fn create_repo(root: &Path) -> Result<Repository> {
     let repo = gix::init(root)?;
+    init_ignore_files(root, &[
+        Path::new(".DS_Store")
+    ])?;
     Ok(repo)
 }
 
@@ -75,8 +72,16 @@ pub fn commit_all(repo: &Repository, message: &str) -> Result<()> {
         .path()
         .parent()
         .ok_or(anyhow!("Invalid repository path"))?;
+    
+    let git_ignore = root.join(".gitignore");
+    let git_ignore = if git_ignore.exists() {
+        fs::read(git_ignore)?
+    } else {
+        vec![]
+    };
+    
     let mut index = State::new(repo.object_hash());
-    let tree = build_tree_from_dir(root, repo, &mut index)?;
+    let tree = build_tree_from_dir(root, repo, &mut index, &git_ignore)?;
     index.sort_entries();
 
     let mut file = gix::index::File::from_state(index, repo.index_path());
@@ -144,13 +149,15 @@ pub fn push(repo: &Repository, config: &'static SiteConfig) -> Result<()> {
 }
 
 fn build_tree_from_dir(
-    root: &Path,
+    dir_root: &Path,
     repo: &Repository,
     index: &mut gix::index::State,
+    git_ignore: &[u8],
 ) -> Result<Tree> {
     let mut tree = Tree::empty();
+    let repo_root = repo.path().parent().unwrap();
 
-    for entry in fs::read_dir(root)? {
+    for entry in fs::read_dir(dir_root)? {
         let entry = entry?;
         let path = entry.path();
         let filename: BString = entry
@@ -159,16 +166,21 @@ fn build_tree_from_dir(
             .map_err(|_| anyhow!("Invalid file name"))?
             .into();
 
+        let mut ignored_paths = gix::ignore::parse(git_ignore);
+
         if path.is_dir() && filename != ".git" {
-            let sub_tree = build_tree_from_dir(&path, repo, index)?;
+            let sub_tree = build_tree_from_dir(&path, repo, index, git_ignore)?;
             let tree_id = repo.write_object(&sub_tree)?.detach();
 
-            tree.entries.push(tree::Entry {
-                mode: tree::EntryKind::Tree.into(),
-                oid: tree_id,
-                filename,
+            let path = path.strip_prefix(repo_root)?.to_string_lossy().into_owned();
+            ignored_paths.all(|(ignore_path, _, _)| !wildmatch(path.as_str().into(), ignore_path.text.as_bstr(), wildmatch::Mode::NO_MATCH_SLASH_LITERAL)).then(|| {
+                tree.entries.push(tree::Entry {
+                    mode: tree::EntryKind::Tree.into(),
+                    oid: tree_id,
+                    filename,
+                });
             });
-        } else if path.is_file() && filename != ".gitignore" {
+        } else if path.is_file() {
             let contents = fs::read(&path)?;
             let blob_id = repo.write_blob(contents)?.into();
 
@@ -179,14 +191,26 @@ fn build_tree_from_dir(
                 Mode::FILE,
                 filename.as_ref(),
             );
-            tree.entries.push(tree::Entry {
-                mode: tree::EntryKind::Blob.into(),
-                oid: blob_id,
-                filename,
+            let path = path.strip_prefix(repo_root)?.to_string_lossy().into_owned();
+            ignored_paths.all(|(ignore_path, _, _)| !wildmatch(path.as_str().into(), ignore_path.text.as_bstr(), wildmatch::Mode::NO_MATCH_SLASH_LITERAL)).then(|| {
+                tree.entries.push(tree::Entry {
+                    mode: tree::EntryKind::Blob.into(),
+                    oid: blob_id,
+                    filename,
+                });
             });
         }
     }
 
-    tree.entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+    tree.entries.sort_by(|a, b| {
+        let mut a_key = a.filename.as_slice().to_vec();
+        let mut b_key = b.filename.as_slice().to_vec();
+
+        let tree_mode = tree::EntryKind::Tree.into();
+        if a.mode == tree_mode { a_key.push(b'/'); }
+        if b.mode == tree_mode { b_key.push(b'/'); }
+
+        a_key.cmp(&b_key)
+    });
     Ok(tree)
 }
