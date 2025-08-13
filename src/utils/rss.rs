@@ -114,7 +114,7 @@ pub fn get_guid_from_content_output_path(
 impl RSSChannel {
     pub fn new(config: &'static SiteConfig) -> Result<Self> {
         log!(true; "rss"; "generating rss feed started");
-        let posts_path = collect_files(&config.build.content, &|path| {
+        let posts_path = collect_files(true, &config.build.content, &|path| {
             path.extension().is_some_and(|ext| ext == "typ")
         })?;
         let posts_meta = posts_path
@@ -136,7 +136,7 @@ impl RSSChannel {
     pub fn into_rss_xml(self, config: &'static SiteConfig) -> Result<String> {
         let items = self
             .items
-            .into_par_iter()
+            .into_iter()
             .map(|item| {
                 ItemBuilder::default()
                     .title(item.title.clone())

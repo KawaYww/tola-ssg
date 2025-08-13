@@ -1,17 +1,16 @@
-use anyhow::{bail, Result};
 use crate::{build::build_site, config::SiteConfig, utils::git};
+use anyhow::{Result, bail};
+use gix::ThreadSafeRepository;
 
-pub fn deploy_site(config: &'static SiteConfig) -> Result<()> {
+pub fn deploy_site(repo: ThreadSafeRepository, config: &'static SiteConfig) -> Result<()> {
     match config.deploy.provider.as_str() {
-        "github" => deploy_github(config),
-        _ => bail!("This platform is not supported now")
+        "github" => deploy_github(repo, config),
+        _ => bail!("This platform is not supported now"),
     }
 }
 
-fn deploy_github(config: &'static SiteConfig) -> Result<()> {
-    let repo = build_site(config, config.deploy.force)?;
+fn deploy_github(repo: ThreadSafeRepository, config: &'static SiteConfig) -> Result<()> {
     git::commit_all(&repo, "deploy it")?;
     git::push(&repo, config)?;
-    
     Ok(())
 }

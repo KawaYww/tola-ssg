@@ -16,12 +16,12 @@ use cli::{Cli, Commands};
 use config::SiteConfig;
 use deploy::deploy_site;
 use init::new_site;
+use rayon::ThreadPoolBuilder;
 use serve::serve_site;
 use std::path::Path;
 
 #[rustfmt::skip]
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli: &'static Cli = Box::leak(Box::new(Cli::parse()));
 
     let config: &'static SiteConfig = {
@@ -43,27 +43,56 @@ async fn main() -> Result<()> {
         Box::leak(Box::new(config))
     };
 
-    // let rss_task = if config.build.rss.enable && !cli.is_init() {
-    //     let config_ref = config;
-    //     Some(tokio::task::spawn_blocking(move || -> Result<()> {
-    //         let rss_xml = crate::utils::rss::RSSChannel::new(config_ref)?;
-    //         rss_xml.write_to_file(config_ref)?;
-    //         Ok(())
-    //     }))
-    // } else {
-    //     None
-    // };
-
-    match cli.command {
-        Commands::Init { .. } => new_site(config)?,
-        Commands::Build { .. } => { build_site(config, config.build.clear)?; },
-        Commands::Deploy { .. } => deploy_site(config)?,
-        Commands::Serve { .. } => serve_site(config).await?
+    let run_rss_task = || {
+        if config.build.rss.enable && !cli.is_init() {
+            let rss_xml = crate::utils::rss::RSSChannel::new(config)?;
+            rss_xml.write_to_file(config)?;
+        }
+        Ok::<(), anyhow::Error>(())
     };
 
-    // if let Some(task) = rss_task {
-    //     task.await??;
-    // }
+    fn run_with_local_pool<F, R>(thread_percantage: f32, f: F) -> R
+    where
+        F: FnOnce() -> R + Send,
+        R: Send,
+    {
+        let max_threads = rayon::current_num_threads();
+        let threads = (max_threads as f32 * thread_percantage).ceil() as usize;
+        ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap()
+            .install(f)
+    }
+
+    match cli.command {
+        Commands::Init { .. } => {
+            new_site(config)?;
+        },
+        Commands::Build { .. } => {
+            std::thread::scope(|s| -> Result<()> {
+                let build_task = s.spawn(|| run_with_local_pool(0.8, || build_site(config, config.build.clear)));
+                let rss_task = s.spawn(|| run_with_local_pool(0.2, run_rss_task));
+                build_task.join().unwrap();
+                rss_task.join().unwrap();
+                Ok(())
+            })?;
+        },
+        Commands::Deploy { .. } => {
+            std::thread::scope(|s| -> Result<()> {
+                let build_task = s.spawn(|| build_site(config, config.build.clear));
+                let rss_task = s.spawn(run_rss_task);
+                let repo = build_task.join().unwrap()?;
+                rss_task.join().unwrap();
+                deploy_site(repo, config);
+                Ok(())
+            })?;
+        },
+        Commands::Serve { .. } => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(serve_site(config))?;
+        },
+    };
 
     Ok(())
 }

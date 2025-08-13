@@ -64,11 +64,11 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn collect_files<P>(dir: &Path, p: &P) -> Result<Arc<Vec<PathBuf>>>
+pub fn collect_files<P>(use_cached: bool, dir: &Path, p: &P) -> Result<Arc<Vec<PathBuf>>>
 where
     P: Fn(&PathBuf) -> bool + Sync,
 {
-    if let Some(cached) = DIR_CACHE.lock().unwrap().get(dir) {
+    if use_cached && let Some(cached) = DIR_CACHE.lock().unwrap().get(dir) {
         return Ok(cached.clone());
     }
 
@@ -78,7 +78,7 @@ where
         .map(|entry| {
             let path = entry.path();
             if path.is_dir() {
-                collect_files(&path, p).unwrap_or_else(|_| Arc::new(Vec::new()))
+                collect_files(use_cached, &path, p).unwrap_or_else(|_| Arc::new(Vec::new()))
             } else if path.is_file() && p(&path) {
                 Arc::new(vec![path])
             } else {
@@ -89,19 +89,27 @@ where
 
     let files: Vec<PathBuf> = nested.iter().flat_map(|arc| arc.iter().cloned()).collect();
     let files = Arc::new(files);
-    DIR_CACHE
-        .lock()
-        .unwrap()
-        .put(dir.to_path_buf(), files.clone());
+    if use_cached {
+        DIR_CACHE
+            .lock()
+            .unwrap()
+            .put(dir.to_path_buf(), files.clone());
+    }
     Ok(files)
 }
 
-pub fn process_files<P, F>(dir: &Path, config: &'static SiteConfig, p: &P, f: &F) -> Result<()>
+pub fn process_files<P, F>(
+    use_cached: bool,
+    dir: &Path,
+    config: &'static SiteConfig,
+    p: &P,
+    f: &F,
+) -> Result<()>
 where
     P: Fn(&PathBuf) -> bool + Sync,
     F: Fn(&Path, &'static SiteConfig) -> Result<()> + Sync,
 {
-    let files = collect_files(dir, p)?;
+    let files = collect_files(use_cached, dir, p)?;
     files.par_iter().try_for_each(|path| f(path, config))?;
     Ok(())
 }
@@ -268,9 +276,12 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
                 let elem = elem.to_owned().with_attributes(attrs);
                 writer.write_event(Event::Start(elem))?;
             },
-            b"svg" => {
-                let svg = process_svg_in_html(html_path, &mut svg_cnt, &mut reader, &mut writer, elem, config)?;
-                svgs.push(svg);
+            b"svg" => match config.build.typst.svg.extract_type {
+                ExtractSvgType::Embedded => writer.write_event(Event::Start(elem))?,
+                _ => {
+                    let svg = process_svg_in_html(html_path, &mut svg_cnt, &mut reader, &mut writer, elem, config)?;
+                    svgs.push(svg);
+                }
             },
             _ => process_link_in_html(&mut writer, elem, config)?,
         },
@@ -283,8 +294,14 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
         Err(elem) => panic!("Error at position {}: {:?}", reader.error_position(), elem),
     }}
     let html_path = html_path.to_path_buf();
-    let svgs = svgs.into_par_iter().flatten().collect();
-    compress_svgs(svgs, &html_path, config).context("Failed to compress svgs").unwrap();
+
+    match config.build.typst.svg.extract_type {
+        ExtractSvgType::Embedded => (),
+        _ => {
+            let svgs = svgs.into_iter().flatten().collect();
+            compress_svgs(svgs, &html_path, config).context("Failed to compress svgs").unwrap();
+        }
+    }
 
     Ok(writer.into_inner().into_inner())
 }
@@ -411,7 +428,7 @@ fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) 
     let parent = html_path.parent().unwrap();
     let inline_max_size = config.get_inline_max_size();
 
-    svgs.par_iter().enumerate().try_for_each(move |(cnt, svg)| -> Result<()> {
+    svgs.iter().enumerate().try_for_each(move |(cnt, svg)| -> Result<()> {
         let relative_path = html_path
             .strip_prefix(&config.build.output)
             .unwrap()
@@ -481,7 +498,6 @@ fn compress_svg_with_builtin(svg_path: &Path, svg_data: &[u8], size: (f32, f32),
 
     let pixmap: Vec<_> = svg_data
         .to_vec()
-        .into_par_iter()
         .chunks(4)
         .map(|chunk| ravif::RGBA8::new(chunk[0], chunk[1], chunk[2], chunk[3]))
         .collect();
@@ -502,7 +518,6 @@ fn process_link_in_html(
 ) -> Result<()> {
     let attrs: Result<Vec<Attribute>> = elem
         .attributes()
-        .par_bridge()
         .flatten()
         .map(|attr| {
             let key = attr.key;
@@ -627,7 +642,7 @@ fn is_asset_link(path: impl AsRef<Path>, config: &'static SiteConfig) -> bool {
     // println!("{:?}, {:?}", path, asset_top_levels);
     match path.components().nth(1) {
         Some(std::path::Component::Normal(first)) => {
-            asset_top_levels.par_iter().any(|name| name == first)
+            asset_top_levels.iter().any(|name| name == first)
         }
         _ => false,
     }
