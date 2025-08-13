@@ -43,6 +43,17 @@ async fn main() -> Result<()> {
         Box::leak(Box::new(config))
     };
 
+    // let rss_task = if config.build.rss.enable && !cli.is_init() {
+    //     let config_ref = config;
+    //     Some(tokio::task::spawn_blocking(move || -> Result<()> {
+    //         let rss_xml = crate::utils::rss::RSSChannel::new(config_ref)?;
+    //         rss_xml.write_to_file(config_ref)?;
+    //         Ok(())
+    //     }))
+    // } else {
+    //     None
+    // };
+
     match cli.command {
         Commands::Init { .. } => new_site(config)?,
         Commands::Build { .. } => { build_site(config, config.build.clear)?; },
@@ -50,8 +61,9 @@ async fn main() -> Result<()> {
         Commands::Serve { .. } => serve_site(config).await?
     };
 
-    // let rss_xml = crate::utils::rss::RSSChannel::new(config)?;
-    // rss_xml.write_to_file(&config.build.rss)?;
+    // if let Some(task) = rss_task {
+    //     task.await??;
+    // }
 
     Ok(())
 }

@@ -5,12 +5,15 @@ use crate::{
     utils::slug::{slugify_fragment, slugify_path},
 };
 use anyhow::{Context, Result, anyhow};
+use lru::LruCache;
 use quick_xml::{
     Reader, Writer,
     events::{BytesEnd, BytesStart, BytesText, Event, attributes::Attribute},
 };
 use rayon::prelude::*;
 use std::borrow::Cow;
+use std::num::{NonZero, NonZeroUsize};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::{
     ffi::OsString,
     fs,
@@ -23,6 +26,10 @@ use std::{
 const PADDING_TOP_FOR_SVG: f32 = 5.0;
 const PADDING_BOTTOM_FOR_SVG: f32 = 4.0;
 
+static DIR_CACHE: LazyLock<Mutex<LruCache<PathBuf, Arc<Vec<PathBuf>>>>> =
+    LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap())));
+static ASSET_TOP_LEVELS: OnceLock<Vec<OsString>> = OnceLock::new();
+
 struct Svg {
     data: Vec<u8>,
     size: (f32, f32),
@@ -33,8 +40,6 @@ impl Svg {
         Self { data, size }
     }
 }
-
-static ASSET_TOP_LEVELS: OnceLock<Vec<OsString>> = OnceLock::new();
 
 pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
     if !dst.exists() {
@@ -59,40 +64,45 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn collect_files<P>(dir: &Path, p: &P) -> Result<Vec<PathBuf>>
+pub fn collect_files<P>(dir: &Path, p: &P) -> Result<Arc<Vec<PathBuf>>>
 where
-    P: Fn(&PathBuf) -> bool,
+    P: Fn(&PathBuf) -> bool + Sync,
 {
-    let mut files = Vec::new();
-
-    for entry in fs::read_dir(dir)?.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            files.extend(collect_files(&path, p)?);
-        } else if path.is_file() && p(&path) {
-            files.push(path);
-        }
+    if let Some(cached) = DIR_CACHE.lock().unwrap().get(dir) {
+        return Ok(cached.clone());
     }
 
+    let entries: Vec<_> = fs::read_dir(dir)?.flatten().collect();
+    let nested: Vec<Arc<Vec<PathBuf>>> = entries
+        .par_iter()
+        .map(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_files(&path, p).unwrap_or_else(|_| Arc::new(Vec::new()))
+            } else if path.is_file() && p(&path) {
+                Arc::new(vec![path])
+            } else {
+                Arc::new(Vec::new())
+            }
+        })
+        .collect();
+
+    let files: Vec<PathBuf> = nested.iter().flat_map(|arc| arc.iter().cloned()).collect();
+    let files = Arc::new(files);
+    DIR_CACHE
+        .lock()
+        .unwrap()
+        .put(dir.to_path_buf(), files.clone());
     Ok(files)
 }
 
 pub fn process_files<P, F>(dir: &Path, config: &'static SiteConfig, p: &P, f: &F) -> Result<()>
 where
     P: Fn(&PathBuf) -> bool + Sync,
-    F: Fn(&Path, &'static SiteConfig) -> Result<Option<JoinHandle<()>>> + Sync,
+    F: Fn(&Path, &'static SiteConfig) -> Result<()> + Sync,
 {
     let files = collect_files(dir, p)?;
-
-    let handles: Vec<_> = files
-        .par_iter()
-        .map(|path| f(path, config))
-        .collect::<Result<_>>()?;
-
-    for handle in handles.into_iter().flatten() {
-        handle.join().ok();
-    }
-
+    files.par_iter().try_for_each(|path| f(path, config))?;
     Ok(())
 }
 
@@ -100,7 +110,7 @@ pub fn process_content(
     content_path: &Path,
     config: &'static SiteConfig,
     should_log_newline: bool,
-) -> Result<Option<JoinHandle<()>>> {
+) -> Result<()> {
     let root = config.get_root();
     let content = &config.build.content;
     let output = &config.build.output.join(&config.build.base_path);
@@ -116,10 +126,11 @@ pub fn process_content(
         log!(should_log_newline; "content"; "{}", relative_asset_path);
 
         let output = output.join(relative_asset_path);
-        fs::create_dir_all(output.parent().unwrap()).unwrap();
+
+        fs::create_dir_all(output.parent().unwrap())?;
         fs::copy(content_path, output)?;
 
-        return Ok(None);
+        return Ok(());
     }
 
     // println!("{:?}, {:?}, {:?}, {:?}", root, content, output, content_path);
@@ -149,7 +160,7 @@ pub fn process_content(
     )?;
 
     let html_content = output.stdout;
-    let (handle, html_content) = process_html(&html_path, &html_content, config)?;
+    let html_content = process_html(&html_path, &html_content, config)?;
 
     let html_content = if config.build.minify {
         minify_html::minify(html_content.as_slice(), &minify_html::Cfg::new())
@@ -158,7 +169,7 @@ pub fn process_content(
     };
 
     fs::write(&html_path, html_content)?;
-    Ok(Some(handle))
+    Ok(())
 }
 
 pub fn process_asset(
@@ -166,7 +177,7 @@ pub fn process_asset(
     config: &'static SiteConfig,
     should_wait_until_stable: bool,
     should_log_newline: bool,
-) -> Result<Option<JoinHandle<()>>> {
+) -> Result<()> {
     let assets = &config.build.assets;
     let output = &config.build.output.join(&config.build.base_path);
 
@@ -218,11 +229,11 @@ pub fn process_asset(
         }
     }
 
-    Ok(None)
+    Ok(())
 }
 
 #[rustfmt::skip]
-fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -> Result<(JoinHandle<()>, Vec<u8>)> {
+fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -> Result<Vec<u8>> {
     let mut svg_cnt = 0;
     let mut writer = Writer::new(Cursor::new(Vec::new()));
     let mut reader = {
@@ -271,14 +282,11 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
         Ok(elem) => writer.write_event(elem)?,
         Err(elem) => panic!("Error at position {}: {:?}", reader.error_position(), elem),
     }}
+    let html_path = html_path.to_path_buf();
+    let svgs = svgs.into_par_iter().flatten().collect();
+    compress_svgs(svgs, &html_path, config).context("Failed to compress svgs").unwrap();
 
-    let handle = std::thread::spawn({
-        let html_path = html_path.to_path_buf();
-        let svgs = svgs.into_iter().flatten().collect();
-        move || compress_svgs(svgs, &html_path, config).context("Failed to compress svgs").unwrap()
-    });
-
-    Ok((handle, writer.into_inner().into_inner()))
+    Ok(writer.into_inner().into_inner())
 }
 
 #[rustfmt::skip]

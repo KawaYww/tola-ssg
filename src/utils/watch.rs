@@ -21,8 +21,7 @@ pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) 
         };
 
         match process_content(path, config, true) {
-            Ok(Some(handle)) => handle.join().ok().context(""),
-            Ok(None) => Ok(()),
+            Ok(()) => Ok(()),
             Err(e) => Err(e),
         }
     })?;
@@ -63,8 +62,7 @@ pub fn process_watched_assets(
                 path
             };
             match process_asset(path, config, should_wait_until_stable, true) {
-                Ok(Some(handle)) => handle.join().ok().context(""),
-                Ok(None) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(e) => Err(e),
             }
         })?;

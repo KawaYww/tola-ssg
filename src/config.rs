@@ -59,8 +59,13 @@ pub mod serde_defaults {
         pub fn assets() -> PathBuf {
             "assets".into()
         }
-        pub fn rss() -> PathBuf {
-            "rss.xml".into()
+
+        pub mod rss {
+            use std::path::PathBuf;
+
+            pub fn path() -> PathBuf {
+                "rss.xml".into()
+            }
         }
 
         #[allow(unused)]
@@ -204,6 +209,9 @@ pub struct BaseConfig {
     // title
     pub title: String,
 
+    // author, e.g.: "KawaYww email@kawayww.com"
+    pub author: String,
+
     // description
     pub description: String,
 
@@ -273,15 +281,14 @@ pub struct BuildConfig {
     #[educe(Default = true)]
     pub minify: bool,
 
-    // rss file path related to `root`
-    #[serde(default = "serde_defaults::build::rss")]
-    #[educe(Default = serde_defaults::build::rss())]
-    pub rss: PathBuf,
-
     // Whether to clear output dir before generating site
     #[serde(default = "serde_defaults::r#false")]
     #[educe(Default = false)]
     pub clear: bool,
+
+    // rss file path related to `root`
+    #[serde(default)]
+    pub rss: RssConfig,
 
     // should slug or not
     #[serde(default)]
@@ -294,6 +301,22 @@ pub struct BuildConfig {
     // tailwind config
     #[serde(default)]
     pub tailwind: TailwindConfig,
+}
+
+// `[build.rss]` in toml
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Default)]
+#[serde(deny_unknown_fields)]
+pub struct RssConfig {
+    // slugify the path or not
+    #[serde(default = "serde_defaults::r#false")]
+    #[educe(Default = serde_defaults::r#false())]
+    pub enable: bool,
+
+    // slugify the fragment or not
+    #[serde(default = "serde_defaults::build::rss::path")]
+    #[educe(Default = serde_defaults::build::rss::path())]
+    pub path: PathBuf,
 }
 
 // `[build.typst]` in toml
@@ -563,6 +586,7 @@ impl SiteConfig {
                 Self::update_option(&mut self.serve.interface, interface.as_ref());
                 Self::update_option(&mut self.serve.port, port.as_ref());
                 Self::update_option(&mut self.serve.watch, watch.clone().as_ref());
+                self.base.url = Some(format!("http://{}:{}", self.serve.interface, self.serve.port));
             },
             Commands::Deploy { force } => {
                 Self::update_option(&mut self.deploy.force, force.clone().as_ref());
@@ -588,7 +612,7 @@ impl SiteConfig {
         self.build.content = root.join(&self.build.content);
         self.build.assets = root.join(&self.build.assets);
         self.build.output = root.join(&self.build.output);
-        self.build.rss = root.join(&self.build.rss);
+        self.build.rss.path = self.build.output.join(&self.build.rss.path);
 
         if self.build.tailwind.enable
             && let Some(input) = self.build.tailwind.input.as_ref()
@@ -614,6 +638,13 @@ impl SiteConfig {
 
         if !self.get_root().join(cli.config.as_path()).exists() {
             bail!("the config file didn't exist");
+        }
+
+        #[allow(clippy::collapsible_if)]
+        if self.build.rss.enable {
+            if self.base.url.is_none() {
+                bail!("the [base.url] is required for generating RSS");
+            }
         }
 
         Self::check_command_installed("[build.typst.command]", &self.build.typst.command);
