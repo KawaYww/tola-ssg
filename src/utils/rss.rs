@@ -114,9 +114,11 @@ pub fn get_guid_from_content_output_path(
 impl RSSChannel {
     pub fn new(config: &'static SiteConfig) -> Result<Self> {
         log!(true; "rss"; "generating rss feed started");
-        let posts_path = collect_files(true, &config.build.content, &|path| {
-            path.extension().is_some_and(|ext| ext == "typ")
-        })?;
+        let posts_path = collect_files(
+            &crate::utils::build::CONTENT_CACHE,
+            &config.build.content,
+            &|path| path.extension().is_some_and(|ext| ext == "typ"),
+        )?;
         let posts_meta = posts_path
             .par_iter()
             .map(|path| query_meta(path, config))
@@ -133,7 +135,7 @@ impl RSSChannel {
         Ok(rss)
     }
 
-    pub fn into_rss_xml(self, config: &'static SiteConfig) -> Result<String> {
+    fn into_rss_xml(self, config: &'static SiteConfig) -> Result<String> {
         let items = self
             .items
             .into_iter()

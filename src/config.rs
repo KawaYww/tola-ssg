@@ -516,7 +516,7 @@ impl SiteConfig {
         Ok(config)
     }
 
-    pub fn from_file(path: &Path) -> Result<Self> {
+    pub fn from_path(path: &Path) -> Result<Self> {
         let content =
             fs::read_to_string(path).map_err(|err| ConfigError::Io(path.to_path_buf(), err))?;
         Self::from_str(&content)

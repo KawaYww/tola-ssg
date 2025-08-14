@@ -23,11 +23,15 @@ use std::{
     thread::JoinHandle,
 };
 
+type DirCache = LazyLock<Mutex<LruCache<PathBuf, Arc<Vec<PathBuf>>>>>;
+
 const PADDING_TOP_FOR_SVG: f32 = 5.0;
 const PADDING_BOTTOM_FOR_SVG: f32 = 4.0;
 
-static DIR_CACHE: LazyLock<Mutex<LruCache<PathBuf, Arc<Vec<PathBuf>>>>> =
-    LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap())));
+pub static CONTENT_CACHE: DirCache =
+    LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
+pub static ASSETS_CACHE: DirCache =
+    LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
 static ASSET_TOP_LEVELS: OnceLock<Vec<OsString>> = OnceLock::new();
 
 struct Svg {
@@ -64,42 +68,52 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn collect_files<P>(use_cached: bool, dir: &Path, p: &P) -> Result<Arc<Vec<PathBuf>>>
+fn collect_files_vec<P>(dir_cache: &DirCache, dir: &Path, p: &P) -> Result<Vec<PathBuf>>
 where
     P: Fn(&PathBuf) -> bool + Sync,
 {
-    if use_cached && let Some(cached) = DIR_CACHE.lock().unwrap().get(dir) {
-        return Ok(cached.clone());
+    if let Some(cached) = dir_cache.lock().unwrap().get(dir) {
+        return Ok((**cached).clone());
     }
 
-    let entries: Vec<_> = fs::read_dir(dir)?.flatten().collect();
-    let nested: Vec<Arc<Vec<PathBuf>>> = entries
+    let paths: Vec<PathBuf> = fs::read_dir(dir)?.flatten().map(|e| e.path()).collect();
+    let mut parts: Vec<Vec<PathBuf>> = paths
         .par_iter()
-        .map(|entry| {
-            let path = entry.path();
+        .map(|path| -> Result<Vec<_>> {
             if path.is_dir() {
-                collect_files(use_cached, &path, p).unwrap_or_else(|_| Arc::new(Vec::new()))
-            } else if path.is_file() && p(&path) {
-                Arc::new(vec![path])
+                Ok(collect_files_vec(dir_cache, path, p)?)
+            } else if path.is_file() && p(path) {
+                Ok(vec![path.clone()])
             } else {
-                Arc::new(Vec::new())
+                Ok(Vec::new())
             }
         })
-        .collect();
+        .collect::<Result<_>>()?;
 
-    let files: Vec<PathBuf> = nested.iter().flat_map(|arc| arc.iter().cloned()).collect();
-    let files = Arc::new(files);
-    if use_cached {
-        DIR_CACHE
-            .lock()
-            .unwrap()
-            .put(dir.to_path_buf(), files.clone());
+    let total_len: usize = parts.iter().map(|v| v.len()).sum();
+    let mut files = Vec::with_capacity(total_len);
+    for mut v in parts {
+        files.append(&mut v);
     }
+
+    dir_cache
+        .lock()
+        .unwrap()
+        .put(dir.to_path_buf(), Arc::new(files.clone()));
+
     Ok(files)
 }
 
+pub fn collect_files<P>(dir_cache: &DirCache, dir: &Path, p: &P) -> Result<Arc<Vec<PathBuf>>>
+where
+    P: Fn(&PathBuf) -> bool + Sync,
+{
+    let files = collect_files_vec(dir_cache, dir, p)?;
+    Ok(Arc::new(files))
+}
+
 pub fn process_files<P, F>(
-    use_cached: bool,
+    dir_cache: &DirCache,
     dir: &Path,
     config: &'static SiteConfig,
     p: &P,
@@ -109,7 +123,7 @@ where
     P: Fn(&PathBuf) -> bool + Sync,
     F: Fn(&Path, &'static SiteConfig) -> Result<()> + Sync,
 {
-    let files = collect_files(use_cached, dir, p)?;
+    let files = collect_files(dir_cache, dir, p)?;
     files.par_iter().try_for_each(|path| f(path, config))?;
     Ok(())
 }
@@ -207,12 +221,10 @@ pub fn process_asset(
         fs::create_dir_all(parent)?;
     }
 
-    if output_path.exists() {
-        fs::remove_file(&output_path)?;
-    }
+    fs::remove_file(&output_path)?;
 
     if should_wait_until_stable {
-        wait_until_stable(asset_path, 5)?;
+        wait_until_stable(asset_path, 2)?;
     }
 
     match asset_extension {

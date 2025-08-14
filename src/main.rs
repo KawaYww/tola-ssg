@@ -26,9 +26,9 @@ fn main() -> Result<()> {
 
     let config: &'static SiteConfig = {
         let root = cli.root.as_deref().unwrap_or(Path::new("./"));
-        let config = root.join(&cli.config);
+        let config_file = root.join(&cli.config);
         let mut config =
-            if config.exists() { SiteConfig::from_file(&config)? }
+            if config_file.exists() { SiteConfig::from_path(&config_file)? }
             else { SiteConfig::default() };
         config.update_with_cli(cli);
 
@@ -51,42 +51,39 @@ fn main() -> Result<()> {
         Ok::<(), anyhow::Error>(())
     };
 
-    fn run_with_local_pool<F, R>(thread_percantage: f32, f: F) -> R
-    where
-        F: FnOnce() -> R + Send,
-        R: Send,
-    {
-        let max_threads = rayon::current_num_threads();
-        let threads = (max_threads as f32 * thread_percantage).ceil() as usize;
-        ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .unwrap()
-            .install(f)
-    }
+    // fn handle_error<T, BODY>(body: BODY) -> T
+    // where
+    //     BODY: FnOnce() -> Result<T> + Send + 'static,
+    // {
+    //     match body() {
+    //         Ok(t) => t,
+    //         Err(err) => {
+    //             eprintln!("Error: {}", err);
+    //             std::process::exit(1);
+    //         }
+    //     }
+    // }
 
     match cli.command {
         Commands::Init { .. } => {
             new_site(config)?;
         },
         Commands::Build { .. } => {
-            std::thread::scope(|s| -> Result<()> {
-                let build_task = s.spawn(|| run_with_local_pool(0.8, || build_site(config, config.build.clear)));
-                let rss_task = s.spawn(|| run_with_local_pool(0.2, run_rss_task));
-                build_task.join().unwrap();
-                rss_task.join().unwrap();
-                Ok(())
-            })?;
+            let (build_handle, rss_handle) = rayon::join(
+                || build_site(config, config.build.clear),
+                run_rss_task
+            );
+            build_handle?;
+            rss_handle?;
         },
         Commands::Deploy { .. } => {
-            std::thread::scope(|s| -> Result<()> {
-                let build_task = s.spawn(|| build_site(config, config.build.clear));
-                let rss_task = s.spawn(run_rss_task);
-                let repo = build_task.join().unwrap()?;
-                rss_task.join().unwrap();
-                deploy_site(repo, config);
-                Ok(())
-            })?;
+            let (repo, rss_handle) = rayon::join(
+                || build_site(config, config.deploy.force),
+                run_rss_task
+            );
+            rss_handle?;
+            let repo = repo?;
+            deploy_site(repo, config)?;
         },
         Commands::Serve { .. } => {
             let rt = tokio::runtime::Runtime::new()?;

@@ -27,6 +27,11 @@ panic = 'abort'
 incremental = true
 strip = true
 
+[profile.flamegraph]
+inherits = "release"
+debug = 1
+strip = false
+
 [dependencies]
 anyhow = "1.0.98"
 which = "8.0.0"
