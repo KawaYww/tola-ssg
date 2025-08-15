@@ -211,7 +211,13 @@ fn query_meta(post_path: &Path, config: &'static SiteConfig) -> Result<PostMeta>
         "--font-path", root, "--root", root,
         post_path,
         META_TAG_NAME, "--field", "value", "--one"
-    )?;
+    )
+    .with_context(|| {
+        format!(
+            "Failed to query metadata for rss in post path: {}\nMake sure your tag name is correct(\"{META_TAG_NAME}\")",
+            post_path.display()
+        )
+    })?;
 
     let queried_meta = str::from_utf8(output.stdout.as_slice()).unwrap();
     let meta = extract_metadata(guid, queried_meta, config)?;
