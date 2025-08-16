@@ -3968,6 +3968,7 @@ dependencies = [
  "clap",
  "colored",
  "crossterm",
+ "dashmap 6.1.0",
  "educe",
  "gix",
  "lru",

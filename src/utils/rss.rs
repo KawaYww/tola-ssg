@@ -57,6 +57,14 @@ enum TypstElement {
     OtherIgnored,
 }
 
+pub fn build_rss(config: &'static SiteConfig) -> Result<()> {
+    if config.build.rss.enable {
+        let rss_xml = crate::utils::rss::RSSChannel::new(config)?;
+        rss_xml.write_to_file(config)?;
+    }
+    Ok(())
+}
+
 impl TypstElement {
     fn into_html_tag(self, config: &'static SiteConfig) -> String {
         match self {
@@ -250,16 +258,16 @@ fn extract_metadata(
         |json_value: &serde_json::Value, key: &str| json_value.get(key).map(|v| v.to_string());
 
     let summary = get_elem_string(&json, "summary")
-        .context("")
+        .context("Failed to get summary metadata")
         .and_then(|summary| {
             let summary = parse_element_from_typst_sequence(&summary)?.into_html_tag(config);
             Ok(summary)
         })
         .ok();
     let meta = PostMeta {
-        author: Some("email@kawayww.com (柳上川)".into()),
-        title: get_elem_string(&json, "title"),
         summary,
+        author: get_elem_string(&json, "author"),
+        title: get_elem_string(&json, "title"),
         date: get_elem_string(&json, "date"),
         update: get_elem_string(&json, "update"),
         link: Some(guid),

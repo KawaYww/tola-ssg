@@ -20,6 +20,8 @@ use rayon::ThreadPoolBuilder;
 use serve::serve_site;
 use std::path::Path;
 
+use crate::utils::rss::build_rss;
+
 #[rustfmt::skip]
 fn main() -> Result<()> {
     let cli: &'static Cli = Box::leak(Box::new(Cli::parse()));
@@ -43,13 +45,10 @@ fn main() -> Result<()> {
         Box::leak(Box::new(config))
     };
 
-    let run_rss_task = || {
-        if config.build.rss.enable && !cli.is_init() {
-            let rss_xml = crate::utils::rss::RSSChannel::new(config)?;
-            rss_xml.write_to_file(config)?;
-        }
-        Ok::<(), anyhow::Error>(())
-    };
+    let run_tasks = || rayon::join(
+        || build_site(config, config.build.clear),
+        || build_rss(config)
+    );
 
     // fn handle_error<T, BODY>(body: BODY) -> T
     // where
@@ -65,29 +64,20 @@ fn main() -> Result<()> {
     // }
 
     match cli.command {
-        Commands::Init { .. } => {
-            new_site(config)?;
-        },
+        Commands::Init { .. } => new_site(config)?,
         Commands::Build { .. } => {
-            let (build_handle, rss_handle) = rayon::join(
-                || build_site(config, config.build.clear),
-                run_rss_task
-            );
-            build_handle?;
-            rss_handle?;
+            let (build_result, rss_result) = run_tasks();
+            _ = (build_result?, rss_result?);
         },
         Commands::Deploy { .. } => {
-            let (repo, rss_handle) = rayon::join(
-                || build_site(config, config.deploy.force),
-                run_rss_task
-            );
-            rss_handle?;
-            let repo = repo?;
+            let (build_result, rss_result) = run_tasks();
+            let (repo, _) = (build_result?, rss_result?);
             deploy_site(repo, config)?;
         },
         Commands::Serve { .. } => {
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(serve_site(config))?;
+            let (build_result, rss_result) = run_tasks();
+            _ = (build_result?, rss_result?);
+            tokio::runtime::Runtime::new()?.block_on(serve_site(config))?;
         },
     };
 

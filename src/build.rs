@@ -33,26 +33,13 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Thr
         (false, _) => git::create_repo(output)?,
     };
 
-
-    thread::scope(|s| -> Result<()> {
-        // process all posts and relative assets
-        let posts_handle = s.spawn(||
-            process_files(&crate::utils::build::CONTENT_CACHE, content, config, &|path| path.starts_with(content), &|path, config| process_content(path, config, false))
-                .context("Failed to compile all posts")
-        );
-
-        // process all assets
-        let assets_handle = s.spawn(||
-            process_files(&crate::utils::build::ASSETS_CACHE, assets, config, &|_| true, &|path, config| process_asset(path, config, false, false))
-                .context("Failed to copy all assets")
-        );
-
-        // waiting for finishing
-        posts_handle.join().map_err(|e| anyhow!("{e:?}"))??;
-        assets_handle.join().map_err(|e| anyhow!("{e:?}"))??;
-
-        Ok(())
-    })?;
+    let (posts_result, assets_result) = rayon::join(
+        || process_files(&crate::utils::build::CONTENT_CACHE, content, config, &|path| path.starts_with(content), &|path, config| process_content(path, config, false))
+            .context("Failed to compile all posts"),
+        || process_files(&crate::utils::build::ASSETS_CACHE, assets, config, &|_| true, &|path, config| process_asset(path, config, false, false))
+            .context("Failed to copy all assets")
+    );
+    _ = (posts_result?, assets_result?);
 
     let file_num = fs::read_dir(&config.build.output)?
         .flatten()
