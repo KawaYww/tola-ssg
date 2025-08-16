@@ -74,8 +74,6 @@ pub async fn start_server(
     config: &'static SiteConfig,
     server_ready: &Arc<AtomicBool>,
 ) -> Result<()> {
-    build_site(config, false)?;
-
     let addr = SocketAddr::new(
         IpAddr::from_str(&config.serve.interface)?,
         config.serve.port,

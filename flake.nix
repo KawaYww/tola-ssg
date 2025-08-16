@@ -40,7 +40,7 @@
               '';
               
               pname = "tola";
-              version = "0.5.11";
+              version = "0.5.12";
               cargo = rustStable;
               rustc = rustStable;
               src = ./.;

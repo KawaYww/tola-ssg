@@ -101,7 +101,7 @@ pub fn process_watched_files(files: &[PathBuf], config: &'static SiteConfig) -> 
 pub fn wait_until_stable(path: &Path, max_retries: usize) -> Result<()> {
     let mut last_size = fs::metadata(path)?.len();
     let mut retries = 0;
-    let timeout = Duration::from_millis(50);
+    let timeout = Duration::from_millis(30);
 
     while retries < max_retries {
         thread::sleep(timeout);

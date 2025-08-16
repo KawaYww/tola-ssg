@@ -5,6 +5,7 @@ use crate::{
     utils::slug::{slugify_fragment, slugify_path},
 };
 use anyhow::{Context, Result, anyhow};
+use dashmap::DashSet;
 use lru::LruCache;
 use quick_xml::{
     Reader, Writer,
@@ -24,15 +25,16 @@ use std::{
 };
 
 type DirCache = LazyLock<Mutex<LruCache<PathBuf, Arc<Vec<PathBuf>>>>>;
+type CreatedDirCache = LazyLock<DashSet<PathBuf>>;
 
 const PADDING_TOP_FOR_SVG: f32 = 5.0;
 const PADDING_BOTTOM_FOR_SVG: f32 = 4.0;
-
+static ASSET_TOP_LEVELS: OnceLock<Vec<OsString>> = OnceLock::new();
+static CREATED_DIRS: CreatedDirCache = LazyLock::new(|| DashSet::new());
 pub static CONTENT_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
 pub static ASSETS_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
-static ASSET_TOP_LEVELS: OnceLock<Vec<OsString>> = OnceLock::new();
 
 struct Svg {
     data: Vec<u8>,
@@ -128,6 +130,13 @@ where
     Ok(())
 }
 
+fn ensure_dir_exists(path: &Path) -> Result<()> {
+    if CREATED_DIRS.insert(path.to_path_buf()) {
+        fs::create_dir_all(path)?;
+    }
+    Ok(())
+}
+
 pub fn process_content(
     content_path: &Path,
     config: &'static SiteConfig,
@@ -148,10 +157,17 @@ pub fn process_content(
         log!(should_log_newline; "content"; "{}", relative_asset_path);
 
         let output = output.join(relative_asset_path);
+        ensure_dir_exists(output.parent().unwrap())?;
 
-        fs::create_dir_all(output.parent().unwrap())?;
+        if let (Ok(src_meta), Ok(dst_meta)) = (content_path.metadata(), output.metadata()) {
+            if let (Ok(src_time), Ok(dst_time)) = (src_meta.modified(), dst_meta.modified())
+                && src_time <= dst_time
+            {
+                return Ok(());
+            }
+        }
+
         fs::copy(content_path, output)?;
-
         return Ok(());
     }
 
@@ -174,6 +190,16 @@ pub fn process_content(
         output.join("index.html")
     };
     let html_path = slugify_path(&html_path, config);
+    if html_path.exists() {
+        let src_time = content_path.metadata()?.modified()?;
+        let dst_time = html_path
+            .metadata()?
+            .modified()
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        if src_time <= dst_time {
+            return Ok(());
+        }
+    }
 
     let output = run_command!(&config.build.typst.command;
         "compile", "--features", "html", "--format", "html",
@@ -222,10 +248,8 @@ pub fn process_asset(
         fs::create_dir_all(parent)?;
     }
 
-    fs::remove_file(&output_path)?;
-
     if should_wait_until_stable {
-        wait_until_stable(asset_path, 2)?;
+        wait_until_stable(asset_path, 5)?;
     }
 
     match asset_extension {

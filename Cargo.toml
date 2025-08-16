@@ -1,6 +1,6 @@
 [package]
 name = "tola"
-version = "0.5.11"
+version = "0.5.12"
 edition = "2024"
 description = "static site generator for typst-based blog - keeping your focus on the content"
 documentation = "https://github.com/kawayww/tola-ssg"
@@ -43,6 +43,7 @@ minify-html = "0.16.4"
 notify = "8.0.0"
 rayon = "1.10.0"
 lru = "0.16.0"
+dashmap = "6.1.0"
 tokio = { version = "1.45.1", features = [
     "macros",
     "rt",
