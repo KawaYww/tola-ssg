@@ -22,7 +22,7 @@ use std::{
 
 const META_TAG_NAME: &str = "<tola-meta>";
 
-pub struct RSSChannel {
+pub struct RSSFeed {
     title: String,
     description: String,
     base_url: String,
@@ -59,7 +59,7 @@ enum TypstElement {
 
 pub fn build_rss(config: &'static SiteConfig) -> Result<()> {
     if config.build.rss.enable {
-        let rss_xml = crate::utils::rss::RSSChannel::new(config)?;
+        let rss_xml = RSSFeed::new(config)?;
         rss_xml.write_to_file(config)?;
     }
     Ok(())
@@ -119,7 +119,7 @@ pub fn get_guid_from_content_output_path(
     Ok(guid_path)
 }
 
-impl RSSChannel {
+impl RSSFeed {
     pub fn new(config: &'static SiteConfig) -> Result<Self> {
         log!(true; "rss"; "generating rss feed started");
         let posts_path = collect_files(

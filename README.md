@@ -22,12 +22,12 @@ e.g.,
 ## Philosophy
 
 The philosophy of `tola`:  
-**Please just focus on Typst itself**  
+**keeping your focus on the content itself**  
 
 `tola` helps you get closer!  
 - A lightweight and minimal abstraction layer should be provided, which allows users to work without being locked into a rigid framework.
-- If you can accomplish something more easily with Typst, then you’d better use Typst.
-- Keep the core simple and maintainable, and enjoy it.
+- If you can accomplish something in post more easily with Typst, then you’d better use it. (e.g.: [TODO](todo))
+- Keep the core simple and maintainable, and enjoy the pure joy of writing.
 
 ## Examples
 

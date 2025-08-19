@@ -30,7 +30,7 @@ type CreatedDirCache = LazyLock<DashSet<PathBuf>>;
 const PADDING_TOP_FOR_SVG: f32 = 5.0;
 const PADDING_BOTTOM_FOR_SVG: f32 = 4.0;
 static ASSET_TOP_LEVELS: OnceLock<Vec<OsString>> = OnceLock::new();
-static CREATED_DIRS: CreatedDirCache = LazyLock::new(|| DashSet::new());
+static CREATED_DIRS: CreatedDirCache = LazyLock::new(DashSet::new);
 pub static CONTENT_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
 pub static ASSETS_CACHE: DirCache =
@@ -159,12 +159,11 @@ pub fn process_content(
         let output = output.join(relative_asset_path);
         ensure_dir_exists(output.parent().unwrap())?;
 
-        if let (Ok(src_meta), Ok(dst_meta)) = (content_path.metadata(), output.metadata()) {
-            if let (Ok(src_time), Ok(dst_time)) = (src_meta.modified(), dst_meta.modified())
-                && src_time <= dst_time
-            {
-                return Ok(());
-            }
+        if let (Ok(src_meta), Ok(dst_meta)) = (content_path.metadata(), output.metadata())
+            && let (Ok(src_time), Ok(dst_time)) = (src_meta.modified(), dst_meta.modified())
+            && src_time <= dst_time
+        {
+            return Ok(());
         }
 
         fs::copy(content_path, output)?;
@@ -320,6 +319,13 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
                     svgs.push(svg);
                 }
             },
+            // b"pre" => {
+            //     writer.write_event(Event::Start(elem))?;
+            //     while let Ok(event) = reader.read_event() {
+            //         let in_codeblock = matches!(&event, Event::Start(e) if e.name().as_ref() == b"code");
+            //         writer.write_event(event)?;
+            //     }
+            // },
             _ => process_link_in_html(&mut writer, elem, config)?,
         },
         Ok(Event::End(elem)) => match elem.name().as_ref() {
@@ -342,6 +348,8 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
 
     Ok(writer.into_inner().into_inner())
 }
+
+fn process_codeblock_in_html() {}
 
 #[rustfmt::skip]
 fn process_svg_in_html(

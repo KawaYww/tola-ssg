@@ -42,10 +42,11 @@ impl Remotes {
         let output = run_command!(root; ["git"]; "remote", "-v")?;
         let output = str::from_utf8(&output.stdout)?;
 
-        let remotes = output.lines().filter(|line| line.ends_with("fetch")).map(|line| {
+        let remotes = output.lines().filter(|line| line.ends_with("fetch)")).map(|line| {
             let parts: Vec<_> = line.split_whitespace().collect();
             let name = parts[0].to_owned();
             let url = parts[1].to_owned();
+            assert_eq!(name, "origin");
 
             Remote { name, url }
         })
@@ -149,6 +150,7 @@ pub fn push(repo: &ThreadSafeRepository, config: &'static SiteConfig) -> Result<
     );
 
     let remote_action = if Remotes::new(&repo_local)?.any(|remote| remote.name == "origin") { "set-url" } else { "add" };
+
     run_command!(root; ["git"];
         "remote", remote_action, "origin", &remote_url
     )?;

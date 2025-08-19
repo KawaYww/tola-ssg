@@ -64,7 +64,7 @@ pub mod serde_defaults {
             use std::path::PathBuf;
 
             pub fn path() -> PathBuf {
-                "rss.xml".into()
+                "feed.xml".into()
             }
         }
 

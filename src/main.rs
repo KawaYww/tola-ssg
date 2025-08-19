@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         Box::leak(Box::new(config))
     };
 
-    let run_tasks = || rayon::join(
+    let run_build_tasks = || rayon::join(
         || build_site(config, config.build.clear),
         || build_rss(config)
     );
@@ -66,16 +66,16 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init { .. } => new_site(config)?,
         Commands::Build { .. } => {
-            let (build_result, rss_result) = run_tasks();
+            let (build_result, rss_result) = run_build_tasks();
             _ = (build_result?, rss_result?);
         },
         Commands::Deploy { .. } => {
-            let (build_result, rss_result) = run_tasks();
+            let (build_result, rss_result) = run_build_tasks();
             let (repo, _) = (build_result?, rss_result?);
             deploy_site(repo, config)?;
         },
         Commands::Serve { .. } => {
-            let (build_result, rss_result) = run_tasks();
+            let (build_result, rss_result) = run_build_tasks();
             _ = (build_result?, rss_result?);
             tokio::runtime::Runtime::new()?.block_on(serve_site(config))?;
         },
