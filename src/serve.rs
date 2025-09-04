@@ -1,4 +1,4 @@
-use crate::{build::build_site, config::SiteConfig, log, watch::watch_for_changes_blocking};
+use crate::{config::SiteConfig, log, watch::watch_for_changes_blocking};
 use anyhow::{Context, Result, anyhow};
 use axum::{
     Router,

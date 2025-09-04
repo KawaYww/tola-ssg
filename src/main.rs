@@ -1,4 +1,4 @@
-#![allow(unused)]
+// #![allow(unused)]
 
 mod build;
 mod cli;
@@ -16,7 +16,6 @@ use cli::{Cli, Commands};
 use config::SiteConfig;
 use deploy::deploy_site;
 use init::new_site;
-use rayon::ThreadPoolBuilder;
 use serve::serve_site;
 use std::path::Path;
 
@@ -39,6 +38,7 @@ fn main() -> Result<()> {
             (true, false) => (),
             (true, true) => bail!("the config file exists, please remove the config file manually or init in other path"),
             (false, false) => bail!("the config file didn't exist"),
+
             (false, true) => config.validate()?,
         }
 

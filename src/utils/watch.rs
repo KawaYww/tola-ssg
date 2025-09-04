@@ -1,6 +1,6 @@
 use super::build::{process_asset, process_content};
 use crate::{config::SiteConfig, run_command};
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use rayon::prelude::*;
 use std::{
     env, fs,

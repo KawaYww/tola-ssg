@@ -1,5 +1,4 @@
 use crate::config::{SiteConfig, SlugMode};
-use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 const FORBIDDEN: &[char] = &[

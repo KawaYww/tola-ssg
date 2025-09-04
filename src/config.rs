@@ -545,11 +545,11 @@ impl SiteConfig {
         } else {
             unreachable!()
         };
-        per_size
-            * inline_max_size
-                .trim_end_matches(|c: char| c.is_ascii_uppercase())
-                .parse::<usize>()
-                .unwrap()
+        let inline_max_size = inline_max_size
+            .trim_end_matches(|c: char| c.is_ascii_uppercase())
+            .parse::<usize>()
+            .unwrap();
+        per_size * inline_max_size
     }
 
     pub fn get_scale(&self) -> f32 {

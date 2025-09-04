@@ -13,7 +13,7 @@ use quick_xml::{
 };
 use rayon::prelude::*;
 use std::borrow::Cow;
-use std::num::{NonZero, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{
     ffi::OsString,
@@ -21,7 +21,6 @@ use std::{
     io::{Cursor, Write},
     path::{Path, PathBuf},
     sync::OnceLock,
-    thread::JoinHandle,
 };
 
 type DirCache = LazyLock<Mutex<LruCache<PathBuf, Arc<Vec<PathBuf>>>>>;
@@ -79,7 +78,7 @@ where
     }
 
     let paths: Vec<PathBuf> = fs::read_dir(dir)?.flatten().map(|e| e.path()).collect();
-    let mut parts: Vec<Vec<PathBuf>> = paths
+    let parts: Vec<Vec<PathBuf>> = paths
         .par_iter()
         .map(|path| -> Result<Vec<_>> {
             if path.is_dir() {
@@ -349,6 +348,7 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
     Ok(writer.into_inner().into_inner())
 }
 
+#[allow(unused)]
 fn process_codeblock_in_html() {}
 
 #[rustfmt::skip]

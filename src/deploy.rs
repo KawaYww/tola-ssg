@@ -1,4 +1,4 @@
-use crate::{build::build_site, config::SiteConfig, utils::git};
+use crate::{config::SiteConfig, utils::git};
 use anyhow::{Result, bail};
 use gix::ThreadSafeRepository;
 

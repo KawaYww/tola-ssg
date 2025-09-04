@@ -3,12 +3,12 @@ use crate::{
     log,
     utils::{
         build::{process_asset, process_content, process_files},
-        git, rss,
+        git,
     },
 };
-use anyhow::{Context, Result, anyhow};
-use gix::{Repository, ThreadSafeRepository};
-use std::{ffi::OsStr, fs, thread};
+use anyhow::{Context, Result};
+use gix::ThreadSafeRepository;
+use std::{ffi::OsStr, fs};
 
 #[rustfmt::skip]
 pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<ThreadSafeRepository> {

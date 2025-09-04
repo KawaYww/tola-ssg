@@ -1,10 +1,7 @@
 use crate::{config::SiteConfig, utils::git};
 use anyhow::{Context, Result, bail};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
 
 // default ignored path
 const IGNORE_FILES: &[&str] = &[".gitignore", ".ignore"];
@@ -30,10 +27,10 @@ pub fn new_site(config: &'static SiteConfig) -> Result<()> {
     let repo = git::create_repo(root)?;
     init_default_config(root)?;
     init_site_structure(root)?;
-    init_ignore_files(root, &[
-        config.build.output.as_path(),
-        Path::new("/assets/images/")
-    ])?;
+    init_ignore_files(
+        root,
+        &[config.build.output.as_path(), Path::new("/assets/images/")],
+    )?;
     git::commit_all(&repo, "initial commit")?;
 
     Ok(())
@@ -66,7 +63,7 @@ fn init_site_structure(root: &Path) -> Result<()> {
 #[rustfmt::skip]
 pub fn init_ignore_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<()> {
     // println!("root: {:?}, {:?}", root, paths_should_ignore);
-    
+
     let paths_should_ignore = paths_should_ignore.iter()
         .try_fold(String::new(), |sum, path| -> Result<String> {
             // let path = path.strip_prefix(root).with_context(|| format!("Failed to strip suffix: path: {path:?}, root: {root:?}"))?;

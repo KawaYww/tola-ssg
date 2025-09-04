@@ -18,13 +18,8 @@ use gix::{
         fs::Metadata,
     },
     objs::{Tree, tree},
-    path::into_bstr,
 };
-use std::{
-    fs,
-    io::BufRead,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
 
 #[derive(Debug, Default)]
 struct Remotes(Vec<Remote>);
