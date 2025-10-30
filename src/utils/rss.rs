@@ -182,7 +182,8 @@ pub fn get_guid_from_content_output_path(
         .to_str()
         .ok_or(anyhow!("Invalid path"))?
         .strip_suffix(".typ")
-        .ok_or(anyhow!("Not a .typ file"))?;
+        .ok_or(anyhow!("Not a .typ file"))
+        .with_context(|| format!("building rss: {:?}", content_path))?;
 
     let guid_path = if content_path.file_name().is_some_and(|p| p == "index.typ") {
         PathBuf::from("index.html")

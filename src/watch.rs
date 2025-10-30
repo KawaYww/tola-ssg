@@ -3,39 +3,34 @@ use anyhow::{Context, Result};
 #[allow(unused_imports)]
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::{
-    path::Path,
-    time::{Duration, Instant},
+    path::Path, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::{Duration, Instant}
 };
-use tokio::sync::oneshot;
+// use tokio::sync::oneshot;
 
 #[rustfmt::skip]
-pub fn watch_for_changes_blocking(config: &'static SiteConfig, shutdown_rx: &mut oneshot::Receiver<()>) -> Result<()> {
+pub fn watch_for_changes_blocking(config: &'static SiteConfig, server_ready: Arc<AtomicBool>) -> Result<()> {
     if !config.serve.watch { return Ok(()) }
+    // println!("watch: {:?}", server_ready);
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let mut watcher = notify::recommended_watcher(tx).context("[watch] Failed to create file watcher")?;
+    let mut watcher = notify::recommended_watcher(tx).context("Failed to create file watcher")?;
 
-    watch_directory(&mut watcher, "content", &config.build.content)?;
-    watch_directory(&mut watcher, "assets", &config.build.assets)?;
+    watch_directory(&mut watcher, "content", &config.build.content).unwrap();
+    watch_directory(&mut watcher, "assets", &config.build.assets).unwrap();
 
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
 
     for res in rx {
+        if !server_ready.load(Ordering::SeqCst) { break }
         match res {
-            Err(e) => log!("watch"; "error: {:?}", e),
+            Err(e) => log!("watch"; "error: {e:?}"),
             Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
                 last_event_time = Instant::now();
                 handle_event(&event, config);
             },
         };
-
-        if shutdown_rx.try_recv().is_ok() {
-            log!("watch"; "received shutdown signal");
-            break;
-        }
     }
-
     Ok(())
 }
 

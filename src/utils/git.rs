@@ -5,7 +5,7 @@
 //
 // Fucking ! !
 // Fucking ! ! ! !
-use crate::{config::SiteConfig, init::init_ignore_files, log, run_command};
+use crate::{config::SiteConfig, init::init_ignored_files, log, run_command};
 use anyhow::{Context, Result, anyhow, bail};
 use gix::{
     Repository, ThreadSafeRepository,
@@ -60,7 +60,7 @@ impl Remotes {
 
 pub fn create_repo(root: &Path) -> Result<ThreadSafeRepository> {
     let repo = gix::init(root)?;
-    init_ignore_files(root, &[Path::new(".DS_Store")])?;
+    init_ignored_files(root, &[Path::new(".DS_Store")])?;
     Ok(repo.into_sync())
 }
 

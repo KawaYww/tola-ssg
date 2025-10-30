@@ -22,19 +22,23 @@ pub enum ConfigError {
 }
 
 // for default value in serde
-pub mod serde_defaults {
-    pub fn r#true() -> bool {
-        true
-    }
+pub mod config_defaults {
+    #[rustfmt::skip]
+    pub fn r#true() -> bool { true }
 
     #[allow(unused)]
-    pub fn r#false() -> bool {
-        false
-    }
+    #[rustfmt::skip]
+    pub fn r#false() -> bool { false }
 
     pub mod base {
         pub fn url() -> Option<String> {
             None
+        }
+        pub fn author() -> String {
+            "<YOUR_NAME>".into()
+        }
+        pub fn email() -> String {
+            "user@noreply.tola".into()
         }
     }
 
@@ -210,22 +214,26 @@ pub struct BaseConfig {
     pub title: String,
 
     // author, e.g.: "Bob"
+    #[serde(default = "config_defaults::base::author")]
+    #[educe(Default = config_defaults::base::author())]
     pub author: String,
 
     // email, e.g.: "bob@xxxxx.com"
+    #[serde(default = "config_defaults::base::email")]
+    #[educe(Default = config_defaults::base::email())]
     pub email: String,
 
     // description
     pub description: String,
 
     // e.g., "https://kawayww.com", for generating `rss.xml`/`atom.xl`, `sitemap.xml`
-    #[serde(default = "serde_defaults::base::url")]
-    #[educe(Default = serde_defaults::base::url())]
+    #[serde(default = "config_defaults::base::url")]
+    #[educe(Default = config_defaults::base::url())]
     pub url: Option<String>,
 
     // e.g., "zh-Hans", "zh_CN", "en_US"
-    #[serde(default = "serde_defaults::build::language")]
-    #[educe(Default = serde_defaults::build::language())]
+    #[serde(default = "config_defaults::build::language")]
+    #[educe(Default = config_defaults::build::language())]
     pub language: String,
 
     #[serde(default)]
@@ -255,37 +263,37 @@ fn validate_base_config() {
 #[serde(default, deny_unknown_fields)]
 pub struct BuildConfig {
     // root directory path
-    #[serde(default = "serde_defaults::build::root")]
-    #[educe(Default = serde_defaults::build::root())]
+    #[serde(default = "config_defaults::build::root")]
+    #[educe(Default = config_defaults::build::root())]
     pub root: Option<PathBuf>,
 
     // e.g., "myblog"
-    #[serde(default = "serde_defaults::build::base_path")]
-    #[educe(Default = serde_defaults::build::base_path())]
+    #[serde(default = "config_defaults::build::base_path")]
+    #[educe(Default = config_defaults::build::base_path())]
     pub base_path: PathBuf,
 
     // content directory path related to `root`
-    #[serde(default = "serde_defaults::build::content")]
-    #[educe(Default = serde_defaults::build::content())]
+    #[serde(default = "config_defaults::build::content")]
+    #[educe(Default = config_defaults::build::content())]
     pub content: PathBuf,
 
     // output directory path related to `root`
-    #[serde(default = "serde_defaults::build::output")]
-    #[educe(Default = serde_defaults::build::output())]
+    #[serde(default = "config_defaults::build::output")]
+    #[educe(Default = config_defaults::build::output())]
     pub output: PathBuf,
 
     // assets directory path related to `root`
-    #[serde(default = "serde_defaults::build::assets")]
-    #[educe(Default = serde_defaults::build::assets())]
+    #[serde(default = "config_defaults::build::assets")]
+    #[educe(Default = config_defaults::build::assets())]
     pub assets: PathBuf,
 
     // minify the html content
-    #[serde(default = "serde_defaults::r#true")]
+    #[serde(default = "config_defaults::r#true")]
     #[educe(Default = true)]
     pub minify: bool,
 
     // Whether to clear output dir before generating site
-    #[serde(default = "serde_defaults::r#false")]
+    #[serde(default = "config_defaults::r#false")]
     #[educe(Default = false)]
     pub clear: bool,
 
@@ -312,13 +320,13 @@ pub struct BuildConfig {
 #[serde(deny_unknown_fields)]
 pub struct RssConfig {
     // slugify the path or not
-    #[serde(default = "serde_defaults::r#false")]
-    #[educe(Default = serde_defaults::r#false())]
+    #[serde(default = "config_defaults::r#false")]
+    #[educe(Default = config_defaults::r#false())]
     pub enable: bool,
 
     // slugify the fragment or not
-    #[serde(default = "serde_defaults::build::rss::path")]
-    #[educe(Default = serde_defaults::build::rss::path())]
+    #[serde(default = "config_defaults::build::rss::path")]
+    #[educe(Default = config_defaults::build::rss::path())]
     pub path: PathBuf,
 }
 
@@ -328,13 +336,13 @@ pub struct RssConfig {
 #[serde(deny_unknown_fields)]
 pub struct SlugConfig {
     // slugify the path or not
-    #[serde(default = "serde_defaults::build::slug::default")]
-    #[educe(Default = serde_defaults::build::slug::default())]
+    #[serde(default = "config_defaults::build::slug::default")]
+    #[educe(Default = config_defaults::build::slug::default())]
     pub path: SlugMode,
 
     // slugify the fragment or not
-    #[serde(default = "serde_defaults::build::slug::on")]
-    #[educe(Default = serde_defaults::build::slug::on())]
+    #[serde(default = "config_defaults::build::slug::on")]
+    #[educe(Default = config_defaults::build::slug::on())]
     pub fragment: SlugMode,
 }
 
@@ -344,8 +352,8 @@ pub struct SlugConfig {
 #[serde(deny_unknown_fields)]
 pub struct TypstConfig {
     // The name of typst command
-    #[serde(default = "serde_defaults::build::typst::command")]
-    #[educe(Default = serde_defaults::build::typst::command())]
+    #[serde(default = "config_defaults::build::typst::command")]
+    #[educe(Default = config_defaults::build::typst::command())]
     pub command: Vec<String>,
 
     // `[build.typst.svg]` part
@@ -359,18 +367,18 @@ pub struct TypstConfig {
 #[serde(deny_unknown_fields)]
 pub struct TypstSvgConfig {
     // whether to extract a embedded svg into separate file, for smaller size && faster loading
-    #[serde(default = "serde_defaults::build::typst::svg::extract_type")]
-    #[educe(Default = serde_defaults::build::typst::svg::extract_type())]
+    #[serde(default = "config_defaults::build::typst::svg::extract_type")]
+    #[educe(Default = config_defaults::build::typst::svg::extract_type())]
     pub extract_type: ExtractSvgType,
 
     // The max size for inlining svg image
-    #[serde(default = "serde_defaults::build::typst::svg::inline_max_size")]
-    #[educe(Default = serde_defaults::build::typst::svg::inline_max_size())]
+    #[serde(default = "config_defaults::build::typst::svg::inline_max_size")]
+    #[educe(Default = config_defaults::build::typst::svg::inline_max_size())]
     pub inline_max_size: String,
 
     // The max size for inlining svg image
-    #[serde(default = "serde_defaults::build::typst::svg::dpi")]
-    #[educe(Default = serde_defaults::build::typst::svg::dpi())]
+    #[serde(default = "config_defaults::build::typst::svg::dpi")]
+    #[educe(Default = config_defaults::build::typst::svg::dpi())]
     pub dpi: f32,
 }
 
@@ -380,18 +388,18 @@ pub struct TypstSvgConfig {
 #[serde(deny_unknown_fields)]
 pub struct TailwindConfig {
     // whether to enable tailwindcss support
-    #[serde(default = "serde_defaults::r#false")]
+    #[serde(default = "config_defaults::r#false")]
     #[educe(Default = false)]
     pub enable: bool,
 
     // whether to enable tailwindcss support
-    #[serde(default = "serde_defaults::build::tailwind::input")]
-    #[educe(Default = serde_defaults::build::tailwind::input())]
+    #[serde(default = "config_defaults::build::tailwind::input")]
+    #[educe(Default = config_defaults::build::tailwind::input())]
     pub input: Option<PathBuf>,
 
     // The name of tailwind command
-    #[serde(default = "serde_defaults::build::tailwind::command")]
-    #[educe(Default = serde_defaults::build::tailwind::command())]
+    #[serde(default = "config_defaults::build::tailwind::command")]
+    #[educe(Default = config_defaults::build::tailwind::command())]
     pub command: Vec<String>,
 }
 
@@ -401,17 +409,17 @@ pub struct TailwindConfig {
 #[serde(deny_unknown_fields)]
 pub struct ServeConfig {
     // Interface to bind on
-    #[serde(default = "serde_defaults::serve::interface")]
-    #[educe(Default = serde_defaults::serve::interface())]
+    #[serde(default = "config_defaults::serve::interface")]
+    #[educe(Default = config_defaults::serve::interface())]
     pub interface: String,
 
     // The port you should provide
-    #[serde(default = "serde_defaults::serve::port")]
-    #[educe(Default = serde_defaults::serve::port())]
+    #[serde(default = "config_defaults::serve::port")]
+    #[educe(Default = config_defaults::serve::port())]
     pub port: u16,
 
     // enable watch
-    #[serde(default = "serde_defaults::r#true")]
+    #[serde(default = "config_defaults::r#true")]
     #[educe(Default = true)]
     pub watch: bool,
 }
@@ -422,13 +430,13 @@ pub struct ServeConfig {
 #[serde(deny_unknown_fields)]
 pub struct DeployConfig {
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::provider")]
-    #[educe(Default = serde_defaults::deploy::provider())]
+    #[serde(default = "config_defaults::deploy::provider")]
+    #[educe(Default = config_defaults::deploy::provider())]
     pub provider: String,
 
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::r#false")]
-    #[educe(Default = serde_defaults::r#false())]
+    #[serde(default = "config_defaults::r#false")]
+    #[educe(Default = config_defaults::r#false())]
     pub force: bool,
 
     // The git provider for deployment
@@ -450,20 +458,20 @@ pub struct DeployConfig {
 #[serde(deny_unknown_fields)]
 pub struct GithubProvider {
     // The remote_url of generated site repo
-    #[serde(default = "serde_defaults::deploy::github::url")]
-    #[educe(Default = serde_defaults::deploy::github::url())]
+    #[serde(default = "config_defaults::deploy::github::url")]
+    #[educe(Default = config_defaults::deploy::github::url())]
     pub url: String,
 
     // The branch of generated site repo
-    #[serde(default = "serde_defaults::deploy::github::branch")]
-    #[educe(Default = serde_defaults::deploy::github::branch())]
+    #[serde(default = "config_defaults::deploy::github::branch")]
+    #[educe(Default = config_defaults::deploy::github::branch())]
     pub branch: String,
 
     // Warning: Be carefully if you enable this option
     // Warning: Not pushing your token into public repo
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::github::token_path")]
-    #[educe(Default = serde_defaults::deploy::github::token_path())]
+    #[serde(default = "config_defaults::deploy::github::token_path")]
+    #[educe(Default = config_defaults::deploy::github::token_path())]
     pub token_path: Option<PathBuf>,
 }
 
@@ -473,8 +481,8 @@ pub struct GithubProvider {
 #[serde(deny_unknown_fields)]
 pub struct CloudflareProvider {
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::provider")]
-    #[educe(Default = serde_defaults::deploy::provider())]
+    #[serde(default = "config_defaults::deploy::provider")]
+    #[educe(Default = config_defaults::deploy::provider())]
     pub provider: String,
 }
 
@@ -484,8 +492,8 @@ pub struct CloudflareProvider {
 #[serde(deny_unknown_fields)]
 pub struct VercalProvider {
     // The provider to use for deployment
-    #[serde(default = "serde_defaults::deploy::provider")]
-    #[educe(Default = serde_defaults::deploy::provider())]
+    #[serde(default = "config_defaults::deploy::provider")]
+    #[educe(Default = config_defaults::deploy::provider())]
     pub provider: String,
 }
 
@@ -640,13 +648,13 @@ impl SiteConfig {
         let cli = self.get_cli();
 
         if !self.get_root().join(cli.config.as_path()).exists() {
-            bail!("the config file didn't exist");
+            bail!("The config file didn't exist");
         }
 
         #[allow(clippy::collapsible_if)]
         if self.build.rss.enable {
             if self.base.url.is_none() {
-                bail!("the [base.url] is required for generating RSS");
+                bail!("The [base.url] is required for generating RSS");
             }
         }
 

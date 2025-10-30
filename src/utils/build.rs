@@ -34,6 +34,9 @@ pub static CONTENT_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
 pub static ASSETS_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
+pub const IGNORED_FILE_NAME: &[&str] = &[
+    ".DS_Store"
+];
 
 struct Svg {
     data: Vec<u8>,
@@ -69,7 +72,7 @@ pub fn _copy_dir_recursively(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn collect_files_vec<P>(dir_cache: &DirCache, dir: &Path, p: &P) -> Result<Vec<PathBuf>>
+fn collect_files_vec<P>(dir_cache: &DirCache, dir: &Path, should_collect: &P) -> Result<Vec<PathBuf>>
 where
     P: Fn(&PathBuf) -> bool + Sync,
 {
@@ -81,9 +84,10 @@ where
     let parts: Vec<Vec<PathBuf>> = paths
         .par_iter()
         .map(|path| -> Result<Vec<_>> {
+            let file_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
             if path.is_dir() {
-                Ok(collect_files_vec(dir_cache, path, p)?)
-            } else if path.is_file() && p(path) {
+                Ok(collect_files_vec(dir_cache, path, should_collect)?)
+            } else if path.is_file() && should_collect(path) && !IGNORED_FILE_NAME.contains(&file_name) {
                 Ok(vec![path.clone()])
             } else {
                 Ok(Vec::new())
@@ -117,14 +121,14 @@ pub fn process_files<P, F>(
     dir_cache: &DirCache,
     dir: &Path,
     config: &'static SiteConfig,
-    p: &P,
+    should_process: &P,
     f: &F,
 ) -> Result<()>
 where
     P: Fn(&PathBuf) -> bool + Sync,
     F: Fn(&Path, &'static SiteConfig) -> Result<()> + Sync,
 {
-    let files = collect_files(dir_cache, dir, p)?;
+    let files = collect_files(dir_cache, dir, should_process)?;
     files.par_iter().try_for_each(|path| f(path, config))?;
     Ok(())
 }
@@ -175,7 +179,8 @@ pub fn process_content(
         .to_str()
         .ok_or(anyhow!("Invalid path"))?
         .strip_suffix(".typ")
-        .ok_or(anyhow!("Not a .typ file"))?;
+        .ok_or(anyhow!("Not a .typ file"))
+        .with_context(|| format!("compiling post: {:?}", content_path))?;
 
     log!(should_log_newline; "content"; "{}", relative_post_path);
 

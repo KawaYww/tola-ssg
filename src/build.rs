@@ -47,9 +47,9 @@ pub fn build_site(config: &'static SiteConfig, should_clear: bool) -> Result<Thr
         .count();
 
     if file_num == 0 {
-        log!("warn"; "output directory is empty, maybe you write nothing or just a single post without `typ` extension?")
+        log!("warn"; "Output directory is empty, maybe you write nothing or just a single post without `typ` extension?")
     } else {
-        log!("build"; "successfully generated site in: {}", config.build.output.display());
+        log!("build"; "Successfully generated site in: {}", config.build.output.display());
     }
 
     Ok(repo)

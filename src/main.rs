@@ -36,7 +36,7 @@ fn main() -> Result<()> {
         let config_exists = config.get_root().join(cli.config.as_path()).exists();
         match (cli.is_init(), config_exists) {
             (true, false) => (),
-            (true, true) => bail!("the config file exists, please remove the config file manually or init in other path"),
+            (true, true) => bail!("The config file exists, please remove the config file manually or init in other path"),
             (false, false) => bail!("the config file didn't exist"),
 
             (false, true) => config.validate()?,

@@ -1,5 +1,5 @@
 use crate::{config::SiteConfig, log, watch::watch_for_changes_blocking};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use axum::{
     Router,
     http::{StatusCode, Uri},
@@ -17,62 +17,79 @@ use std::{
     },
     time::Duration,
 };
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
 #[rustfmt::skip]
 pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
-    let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     let server_ready = Arc::new(AtomicBool::new(false));
 
     tokio::spawn({
         let server_ready = Arc::clone(&server_ready);
-        async move { while let Err(err) = start_server(config, &server_ready).await {
-            if is_nonrecoverable(&err, config) { return; }
-            wait_for_retrying(&err, 2).await;
-        }}
+        async move {
+            if let Result::Err(err) = start_server(config, server_ready).await {
+                log!("serve"; "{err}")
+            }
+        }
+        // async move { while let Err(err) = start_server(config, &server_ready).await {
+        //     if !is_recoverable(&err, config) { return; }
+        //     wait_for_retrying(&err, 2).await;
+        // }}
+    });
+   
+    std::thread::spawn({
+        // std::thread::sleep(Duration::from_secs(2));
+        let server_ready = Arc::clone(&server_ready);
+        move || {
+            wait_for_server(true, &server_ready);
+            if let Result::Err(err) = watch_for_changes_blocking(config, server_ready) {
+                log!("watch"; "{err}");
+            }
+        }
     });
 
-    std::thread::spawn(move || {
-        wait_for_server_ready(&server_ready);
-        watch_for_changes_blocking(config, &mut shutdown_rx).ok();
-    });
-
-    tokio::signal::ctrl_c().await?;
-    shutdown_tx.send(()).map_err(|_| anyhow!("Failed to send shutdown message to watcher"))?;
+    tokio::signal::ctrl_c().await.ok();
+    wait_for_server(false, &server_ready);
 
     Ok(())
 }
 
-fn is_nonrecoverable(err: &anyhow::Error, config: &SiteConfig) -> bool {
-    let mut result = false;
+#[allow(unused)]
+fn is_recoverable(err: &anyhow::Error, config: &SiteConfig) -> bool {
+    let mut state = false;
     let err = err.to_string();
+    // println!("{err}");
     match err.as_str() {
-        "address already in use" => log!("error"; "port `{}` is already in use", config.serve.port),
-        _ => result = true,
+        "Failed to bind to address" => log!("error"; "Failed to bind to address `{}`", config.serve.port),
+        _ => state = true,
     }
-    result
+    state
 }
 
-fn wait_for_server_ready(server_ready: &Arc<AtomicBool>) {
-    log!("watch"; "waiting for server to start");
-    while !server_ready.load(Ordering::Acquire) {
-        std::thread::sleep(Duration::from_secs(1));
+#[allow(unused)]
+fn wait_for_server(ready: bool, server_ready: &Arc<AtomicBool>) {
+    let state = if ready {"start"} else {"quit"};
+    log!("watch"; "Waiting for server to {state}");
+    while ready != server_ready.load(Ordering::SeqCst) {
+        // println!("1");
+        std::thread::sleep(Duration::from_millis(500));
     }
+    
 }
 
 #[rustfmt::skip]
+#[allow(unused)]
 async fn wait_for_retrying(err: &anyhow::Error, timeout_secs: u64) {
-    log!("error"; "failed to start server (will retry): {err:?}");
+    log!("serve"; "Failed to start server (will retry): {err:?}");
     for i in (0..=timeout_secs).rev() {
-        log!("serve"; "retrying in {i} seconds");
+        log!("serve"; "Retrying in {i} seconds");
         tokio::time::sleep(Duration::from_secs(i)).await;
     }
 }
 
 pub async fn start_server(
     config: &'static SiteConfig,
-    server_ready: &Arc<AtomicBool>,
+    server_ready: Arc<AtomicBool>,
 ) -> Result<()> {
     let addr = SocketAddr::new(
         IpAddr::from_str(&config.serve.interface)?,
@@ -81,7 +98,7 @@ pub async fn start_server(
 
     let listener = TcpListener::bind(addr)
         .await
-        .with_context(|| format!("[serve] Failed to bind to address {addr}"))?;
+        .with_context(|| format!("Failed to bind to address {addr}"))?;
 
     let app = {
         let base_path = config.build.output.clone();
@@ -91,11 +108,12 @@ pub async fn start_server(
         Router::new().fallback(get_service(serve_dir))
     };
 
-    server_ready.store(true, Ordering::Release);
+    server_ready.store(true, Ordering::SeqCst);
+    // println!("serve: {:?}", server_ready);
 
     log!("serve"; "serving site on http://{}", addr);
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal(server_ready))
         .await
         .context("[serve] failed to start")?;
 
@@ -164,9 +182,10 @@ async fn handle_404() -> (StatusCode, &'static str) {
 }
 
 // Helper function to handle shutdown signal
-async fn shutdown_signal() {
+async fn shutdown_signal(server_ready: Arc<AtomicBool>) {
     tokio::signal::ctrl_c()
         .await
         .expect("Failed to install CTRL+C signal handler");
+    server_ready.store(false, Ordering::SeqCst);
     log!("serve"; "shutting down gracefully...");
 }

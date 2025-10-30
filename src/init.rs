@@ -12,6 +12,7 @@ const CONFIG: &str = "tola.toml";
 // default site structure
 const DIRS: &[&str] = &[
     "content",
+    "content",
     "assets/images",
     "assets/iconfonts",
     "assets/fonts",
@@ -25,11 +26,11 @@ pub fn new_site(config: &'static SiteConfig) -> Result<()> {
     let root = config.get_root();
 
     let repo = git::create_repo(root)?;
-    init_default_config(root)?;
     init_site_structure(root)?;
-    init_ignore_files(
+    init_default_config(root)?;
+    init_ignored_files(
         root,
-        &[config.build.output.as_path(), Path::new("/assets/images/")],
+        &[config.build.output.as_path(), Path::new("/assets/images/")], // concat ignored file paths
     )?;
     git::commit_all(&repo, "initial commit")?;
 
@@ -50,7 +51,7 @@ fn init_site_structure(root: &Path) -> Result<()> {
         let path = root.join(path);
         if path.exists() {
             bail!(
-                "there already has path `{}` when you init site",
+                "There already has path `{}` when you init site. Maybe you should ",
                 path.display()
             )
         } else {
@@ -61,7 +62,7 @@ fn init_site_structure(root: &Path) -> Result<()> {
 }
 
 #[rustfmt::skip]
-pub fn init_ignore_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<()> {
+pub fn init_ignored_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<()> {
     // println!("root: {:?}, {:?}", root, paths_should_ignore);
 
     let paths_should_ignore = paths_should_ignore.iter()
@@ -73,18 +74,13 @@ pub fn init_ignore_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<(
         })?;
 
     // println!("{:?}", IGNORE_FILES);
-    IGNORE_FILES.par_iter().try_for_each(|path| {
+    IGNORE_FILES.par_iter().for_each(|path| {
         let path = root.join(path);
-        if path.exists() {
-            bail!(
-                "there already has path `{}` when you init site",
-                path.display()
-            )
-        } else {
+        if !path.exists() {
             // println!("ignore file: {:?}, {:?}", path, paths_should_ignore);
-            fs::write(path, paths_should_ignore.as_str()).context("")
+            fs::write(path, paths_should_ignore.as_str()).ok();
         }
-    })?;
+    });
 
     Ok(())
 }
