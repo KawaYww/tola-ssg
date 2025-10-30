@@ -14,8 +14,9 @@ e.g.,
 - local server for previewing the generated size
 - prevent users from typing repetitive command which user doesn't matter
 - built-in tailwind-css support, out of the box
-- deploy the generated site to github/cloudflare/vercal page
+- deploy the generated site to github page (other provider is in plan)
 - provide template file with a small kernal, so that most people can customize their own site easily (in plan)
+- rss2.0 support
 
 *Note*: The release 0.5.0 is comming soon. (tailwindcss integration, github deployment)  
 

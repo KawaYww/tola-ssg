@@ -209,8 +209,11 @@ pub struct BaseConfig {
     // title
     pub title: String,
 
-    // author, e.g.: "KawaYww email@kawayww.com"
+    // author, e.g.: "Bob"
     pub author: String,
+
+    // email, e.g.: "bob@xxxxx.com"
+    pub email: String,
 
     // description
     pub description: String,

@@ -44,6 +44,7 @@ notify = "8.0.0"
 rayon = "1.10.0"
 lru = "0.16.0"
 dashmap = "6.1.0"
+regex = "1.12.2"
 tokio = { version = "1.45.1", features = [
     "macros",
     "rt",
