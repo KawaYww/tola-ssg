@@ -51,7 +51,7 @@ fn init_site_structure(root: &Path) -> Result<()> {
         let path = root.join(path);
         if path.exists() {
             bail!(
-                "There already has path `{}` when you init site. Maybe you should ",
+                "There already has path `{}` when you init site. Maybe you should try `tola init <SITE_NAME>`",
                 path.display()
             )
         } else {
@@ -62,10 +62,10 @@ fn init_site_structure(root: &Path) -> Result<()> {
 }
 
 #[rustfmt::skip]
-pub fn init_ignored_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<()> {
+pub fn init_ignored_files(root: &Path, paths_should_ignored: &[&Path]) -> Result<()> {
     // println!("root: {:?}, {:?}", root, paths_should_ignore);
 
-    let paths_should_ignore = paths_should_ignore.iter()
+    let paths_should_ignored = paths_should_ignored.iter()
         .try_fold(String::new(), |sum, path| -> Result<String> {
             // let path = path.strip_prefix(root).with_context(|| format!("Failed to strip suffix: path: {path:?}, root: {root:?}"))?;
             // let path = PathBuf::from("/").join(path);
@@ -78,7 +78,7 @@ pub fn init_ignored_files(root: &Path, paths_should_ignore: &[&Path]) -> Result<
         let path = root.join(path);
         if !path.exists() {
             // println!("ignore file: {:?}, {:?}", path, paths_should_ignore);
-            fs::write(path, paths_should_ignore.as_str()).ok();
+            fs::write(path, paths_should_ignored.as_str()).ok();
         }
     });
 

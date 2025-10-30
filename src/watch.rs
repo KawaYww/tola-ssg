@@ -21,14 +21,23 @@ pub fn watch_for_changes_blocking(config: &'static SiteConfig, server_ready: Arc
     let mut last_event_time = Instant::now();
     let debounce_duration = Duration::from_millis(50);
 
+    let mut last_path = String::new();
     for res in rx {
         if !server_ready.load(Ordering::SeqCst) { break }
         match res {
             Err(e) => log!("watch"; "error: {e:?}"),
-            Ok(event) => if should_process_event(&event) && last_event_time.elapsed() > debounce_duration {
+            Ok(event) if should_process_event(&event) => {
+                let Some(path) = event.paths.first() else { continue };
+                let path_str = path.to_string_lossy();
+
+                if last_path == path_str || last_event_time.elapsed() < debounce_duration { continue }
+
+                // println!("{event:?}");
+                last_path = path_str.to_string();
                 last_event_time = Instant::now();
                 handle_event(&event, config);
             },
+            _ => continue
         };
     }
     Ok(())
@@ -57,6 +66,6 @@ fn should_process_event(event: &Event) -> bool {
 fn handle_event(event: &Event, config: &'static SiteConfig)  {
     // log!("watch"; "Detected changes in: {:?}", event.paths);
     if let Err(err) = process_watched_files(&event.paths, config).context("Failed to process changed files")  {
-        log!("watch"; "error: {:?}", err);
+        log!("watch"; "{err}");
     };
 }

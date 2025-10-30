@@ -1,5 +1,5 @@
 use super::build::{process_asset, process_content};
-use crate::{config::SiteConfig, run_command};
+use crate::{config::SiteConfig, log, run_command};
 use anyhow::{Result, anyhow, bail};
 use rayon::prelude::*;
 use std::{
@@ -12,7 +12,7 @@ use std::{
 pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) -> Result<()> {
     let flag = config.get_root().starts_with("./");
 
-    files.par_iter().try_for_each(|path| {
+    files.par_iter().for_each(|path| {
         let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
         let path = if flag {
             &Path::new("./").join(path)
@@ -20,11 +20,10 @@ pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) 
             path
         };
 
-        match process_content(path, config, true) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(e),
+        if let Err(e) = process_content(path, config, true) {
+            log!("watch"; "{e}");
         }
-    })?;
+    });
 
     if config.build.tailwind.enable {
         let input = config.build.tailwind.input.as_ref().unwrap();
@@ -101,7 +100,7 @@ pub fn process_watched_files(files: &[PathBuf], config: &'static SiteConfig) -> 
 pub fn wait_until_stable(path: &Path, max_retries: usize) -> Result<()> {
     let mut last_size = fs::metadata(path)?.len();
     let mut retries = 0;
-    let timeout = Duration::from_millis(30);
+    let timeout = Duration::from_millis(50);
 
     while retries < max_retries {
         thread::sleep(timeout);

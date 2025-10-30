@@ -107,7 +107,12 @@ pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
     let (stdout, stderr) = (str::from_utf8(&output.stdout)?.trim(), str::from_utf8(&output.stderr)?.trim());
 
     if !output.status.success() {
-        anyhow::bail!("Command `{name}` failed: {stderr}");
+        let stderr = stderr.trim_start_matches("warning: html export is under active development and incomplete
+ = hint: its behaviour may change at any time
+ = hint: do not rely on this feature for production use cases
+ = hint: see https://github.com/typst/typst/issues/5512 for more information\n");
+        eprintln!("{stderr}");
+        anyhow::bail!("Command `{name}` failed");
     }
 
     // Configurable ignore prefixes

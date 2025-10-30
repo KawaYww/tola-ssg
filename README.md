@@ -18,8 +18,6 @@ e.g.,
 - provide template file with a small kernal, so that most people can customize their own site easily (in plan)
 - rss2.0 support
 
-*Note*: The release 0.5.0 is comming soon. (tailwindcss integration, github deployment)  
-
 ## Philosophy
 
 The philosophy of `tola`:  

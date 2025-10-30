@@ -209,7 +209,8 @@ pub fn process_content(
         "--font-path", root, "--root", root,
         content_path, "-"
     )
-    .with_context(|| format!("post path: {}", content_path.display()))?;
+    // .with_context(|| format!("post path: {}", content_path.display()))
+?;
 
     let html_content = output.stdout;
     let html_content = process_html(&html_path, &html_content, config)?;
