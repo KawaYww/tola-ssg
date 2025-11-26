@@ -1,6 +1,11 @@
+//! Command-line interface definitions.
+//!
+//! Defines all CLI arguments and subcommands using clap.
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+/// Tola static site generator CLI
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
 pub struct Cli {
@@ -37,6 +42,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
+/// Available subcommands
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Init a template site

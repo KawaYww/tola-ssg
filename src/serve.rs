@@ -1,10 +1,13 @@
+//! Development server with live reload support.
+//!
+//! Serves the built site and watches for file changes if enabled.
+
 use crate::{config::SiteConfig, log, watch::watch_for_changes_blocking};
 use anyhow::{Context, Result};
 use axum::{
     Router,
     http::{StatusCode, Uri},
     response::{Html, IntoResponse},
-    routing::{get, get_service},
 };
 use std::{
     fs,
@@ -20,29 +23,26 @@ use std::{
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
-#[rustfmt::skip]
+/// Start the development server with file watching
 pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
     let server_ready = Arc::new(AtomicBool::new(false));
 
+    // Spawn server task
     tokio::spawn({
         let server_ready = Arc::clone(&server_ready);
         async move {
-            if let Result::Err(err) = start_server(config, server_ready).await {
-                log!("serve"; "{err}")
+            if let Err(err) = start_server(config, server_ready).await {
+                log!("serve"; "{err}");
             }
         }
-        // async move { while let Err(err) = start_server(config, &server_ready).await {
-        //     if !is_recoverable(&err, config) { return; }
-        //     wait_for_retrying(&err, 2).await;
-        // }}
     });
-   
+
+    // Spawn file watcher thread
     std::thread::spawn({
-        // std::thread::sleep(Duration::from_secs(2));
         let server_ready = Arc::clone(&server_ready);
         move || {
             wait_for_server(true, &server_ready);
-            if let Result::Err(err) = watch_for_changes_blocking(config, server_ready) {
+            if let Err(err) = watch_for_changes_blocking(config, server_ready) {
                 log!("watch"; "{err}");
             }
         }
@@ -54,39 +54,16 @@ pub async fn serve_site(config: &'static SiteConfig) -> Result<()> {
     Ok(())
 }
 
-#[allow(unused)]
-fn is_recoverable(err: &anyhow::Error, config: &SiteConfig) -> bool {
-    let mut state = false;
-    let err = err.to_string();
-    // println!("{err}");
-    match err.as_str() {
-        "Failed to bind to address" => log!("error"; "Failed to bind to address `{}`", config.serve.port),
-        _ => state = true,
-    }
-    state
-}
-
-#[allow(unused)]
+/// Block until server reaches the expected ready state
 fn wait_for_server(ready: bool, server_ready: &Arc<AtomicBool>) {
-    let state = if ready {"start"} else {"quit"};
+    let state = if ready { "start" } else { "quit" };
     log!("watch"; "Waiting for server to {state}");
-    while ready != server_ready.load(Ordering::SeqCst) {
-        // println!("1");
-        std::thread::sleep(Duration::from_millis(500));
-    }
-    
-}
-
-#[rustfmt::skip]
-#[allow(unused)]
-async fn wait_for_retrying(err: &anyhow::Error, timeout_secs: u64) {
-    log!("serve"; "Failed to start server (will retry): {err:?}");
-    for i in (0..=timeout_secs).rev() {
-        log!("serve"; "Retrying in {i} seconds");
-        tokio::time::sleep(Duration::from_secs(i)).await;
+    while ready != server_ready.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 
+/// Start the HTTP server on configured address
 pub async fn start_server(
     config: &'static SiteConfig,
     server_ready: Arc<AtomicBool>,
@@ -100,18 +77,11 @@ pub async fn start_server(
         .await
         .with_context(|| format!("Failed to bind to address {addr}"))?;
 
-    let app = {
-        let base_path = config.build.output.clone();
-        let serve_dir = ServeDir::new(&config.build.output)
-            .append_index_html_on_directories(false)
-            .not_found_service(get(move |url| handle_path(url, base_path)));
-        Router::new().fallback(get_service(serve_dir))
-    };
+    let app = create_router(config);
 
-    server_ready.store(true, Ordering::SeqCst);
-    // println!("serve: {:?}", server_ready);
-
+    server_ready.store(true, Ordering::Release);
     log!("serve"; "serving site on http://{}", addr);
+
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(server_ready))
         .await
@@ -120,72 +90,91 @@ pub async fn start_server(
     Ok(())
 }
 
+/// Create the Axum router with static file serving
+fn create_router(config: &'static SiteConfig) -> Router {
+    let base_path = config.build.output.clone();
+    let serve_dir = ServeDir::new(&config.build.output)
+        .append_index_html_on_directories(false)
+        .not_found_service(axum::routing::get(move |uri| {
+            let base = base_path.clone();
+            async move { handle_path(uri, base).await }
+        }));
+    Router::new().fallback_service(serve_dir)
+}
+
+/// Handle incoming requests, serving files or directory listings
 async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
     let request_path = uri.path().trim_matches('/');
-    let request_path = urlencoding::decode(request_path).unwrap().into_owned();
+    let request_path = urlencoding::decode(request_path)
+        .map(|s| s.into_owned())
+        .unwrap_or_default();
     let local_path = base_path.join(&request_path);
 
     // Try to read the file directly
-    if let Ok(content) = fs::read_to_string(&local_path) {
-        return Html(content).into_response();
+    if local_path.is_file() {
+        if let Ok(content) = fs::read_to_string(&local_path) {
+            return Html(content).into_response();
+        }
     }
 
-    // If not a file, check if it's a directory and try to serve an `index.html`
+    // If it's a directory, try to serve index.html or generate listing
     if local_path.is_dir() {
         let index_path = local_path.join("index.html");
         if let Ok(content) = fs::read_to_string(&index_path) {
             return Html(content).into_response();
         }
 
-        // If no index.html, generate a directory listing
-        if let Ok(file_list) = generate_directory_listing(&local_path, &request_path).await {
-            return Html(file_list).into_response();
+        if let Ok(listing) = generate_directory_listing(&local_path, &request_path) {
+            return Html(listing).into_response();
         }
     }
+
     // Fallback to 404
-    handle_404().await.into_response()
+    (StatusCode::NOT_FOUND, "404 Not Found").into_response()
 }
 
-// Helper function to generate a directory listing
-async fn generate_directory_listing(
-    dir_path: &PathBuf,
-    request_path: &str,
-) -> Result<String, std::io::Error> {
-    let mut file_list = String::new();
-    for entry in fs::read_dir(dir_path)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let href = format!("{request_path}/{name}");
-        file_list.push_str(&format!("<li><a href='{href}'>{name}</a></li>"));
-    }
+/// Generate HTML directory listing for browsing
+fn generate_directory_listing(dir_path: &PathBuf, request_path: &str) -> std::io::Result<String> {
+    let entries: Vec<_> = fs::read_dir(dir_path)?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let href = if request_path.is_empty() {
+                format!("/{name}")
+            } else {
+                format!("/{request_path}/{name}")
+            };
+            format!("<li><a href='{href}'>{name}</a></li>")
+        })
+        .collect();
 
     Ok(format!(
-        r#"
-        <html>
-            <head><style>
-                * {{ background: #273748; color: white; }}
-                li {{ font-weight: bold; }}
-                table {{ border-collapse: collapse; }} td {{ padding: 8px; }}
-            </style></head>
-            <body>
-                <h1>Directory: {request_path}</h1>
-                {file_list}
-            </body>
-        </html>
-        "#
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Directory: /{request_path}</title>
+    <style>
+        body {{ background: #273748; color: white; font-family: system-ui; padding: 2rem; }}
+        a {{ color: #60a5fa; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        li {{ padding: 0.25rem 0; }}
+    </style>
+</head>
+<body>
+    <h1>Directory: /{request_path}</h1>
+    <ul>{}</ul>
+</body>
+</html>"#,
+        entries.join("\n        ")
     ))
 }
 
-// Helper function to handle 404 errors
-async fn handle_404() -> (StatusCode, &'static str) {
-    (StatusCode::NOT_FOUND, "404 Not Found")
-}
-
-// Helper function to handle shutdown signal
+/// Handle graceful shutdown on Ctrl+C
 async fn shutdown_signal(server_ready: Arc<AtomicBool>) {
     tokio::signal::ctrl_c()
         .await
         .expect("Failed to install CTRL+C signal handler");
-    server_ready.store(false, Ordering::SeqCst);
+    server_ready.store(false, Ordering::Release);
     log!("serve"; "shutting down gracefully...");
 }

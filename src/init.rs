@@ -1,17 +1,19 @@
+//! Site initialization module.
+//!
+//! Creates new site structure with default configuration.
+
 use crate::{config::SiteConfig, utils::git};
 use anyhow::{Context, Result, bail};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::{fs, path::Path};
 
-// default ignored path
+/// Files to write ignore patterns to
 const IGNORE_FILES: &[&str] = &[".gitignore", ".ignore"];
 
-// default config path
-const CONFIG: &str = "tola.toml";
+/// Default config filename
+const CONFIG_FILE: &str = "tola.toml";
 
-// default site structure
-const DIRS: &[&str] = &[
-    "content",
+/// Default site directory structure
+const SITE_DIRS: &[&str] = &[
     "content",
     "assets/images",
     "assets/iconfonts",
@@ -22,65 +24,55 @@ const DIRS: &[&str] = &[
     "utils",
 ];
 
+/// Create a new site with default structure
 pub fn new_site(config: &'static SiteConfig) -> Result<()> {
     let root = config.get_root();
 
     let repo = git::create_repo(root)?;
     init_site_structure(root)?;
     init_default_config(root)?;
-    init_ignored_files(
-        root,
-        &[config.build.output.as_path(), Path::new("/assets/images/")], // concat ignored file paths
-    )?;
+    init_ignored_files(root, &[config.build.output.as_path(), Path::new("/assets/images/")])?;
     git::commit_all(&repo, "initial commit")?;
 
     Ok(())
 }
 
+/// Write default configuration file
 fn init_default_config(root: &Path) -> Result<()> {
-    let default_site_config = SiteConfig::default();
-    let content = toml::to_string_pretty(&default_site_config)?;
-    let config_path = root.join(CONFIG);
-    fs::write(config_path, content)?;
-
+    let content = toml::to_string_pretty(&SiteConfig::default())?;
+    fs::write(root.join(CONFIG_FILE), content)?;
     Ok(())
 }
 
+/// Create site directory structure
 fn init_site_structure(root: &Path) -> Result<()> {
-    DIRS.par_iter().try_for_each(|path| {
-        let path = root.join(path);
+    for dir in SITE_DIRS {
+        let path = root.join(dir);
         if path.exists() {
             bail!(
-                "There already has path `{}` when you init site. Maybe you should try `tola init <SITE_NAME>`",
+                "Path `{}` already exists. Try `tola init <SITE_NAME>` instead.",
                 path.display()
-            )
-        } else {
-            fs::create_dir_all(&path).context("")
+            );
         }
-    })?;
+        fs::create_dir_all(&path).with_context(|| format!("Failed to create {}", path.display()))?;
+    }
     Ok(())
 }
 
-#[rustfmt::skip]
-pub fn init_ignored_files(root: &Path, paths_should_ignored: &[&Path]) -> Result<()> {
-    // println!("root: {:?}, {:?}", root, paths_should_ignore);
+/// Initialize .gitignore and .ignore files with specified paths
+pub fn init_ignored_files(root: &Path, paths: &[&Path]) -> Result<()> {
+    let content = paths
+        .iter()
+        .filter_map(|p| p.to_str())
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    let paths_should_ignored = paths_should_ignored.iter()
-        .try_fold(String::new(), |sum, path| -> Result<String> {
-            // let path = path.strip_prefix(root).with_context(|| format!("Failed to strip suffix: path: {path:?}, root: {root:?}"))?;
-            // let path = PathBuf::from("/").join(path);
-            let path = path.to_str().with_context(|| format!("Failed to convert this path({path:?}) to str"))?;
-            Ok(sum + path + "\n")
-        })?;
-
-    // println!("{:?}", IGNORE_FILES);
-    IGNORE_FILES.par_iter().for_each(|path| {
-        let path = root.join(path);
+    for filename in IGNORE_FILES {
+        let path = root.join(filename);
         if !path.exists() {
-            // println!("ignore file: {:?}, {:?}", path, paths_should_ignore);
-            fs::write(path, paths_should_ignored.as_str()).ok();
+            fs::write(&path, &content)?;
         }
-    });
+    }
 
     Ok(())
 }

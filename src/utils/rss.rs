@@ -1,5 +1,3 @@
-// #![allow(unused)]
-
 use crate::{
     config::SiteConfig,
     log, run_command,
@@ -8,17 +6,15 @@ use crate::{
 use anyhow::{Context, Ok, Result, anyhow, bail};
 use rayon::prelude::*;
 use regex::Regex;
-use rss::{
-    ChannelBuilder, GuidBuilder, ItemBuilder,
-    // extension::atom::{self, AtomExtension, AtomExtensionBuilder, Link},
-    validation::Validate,
-};
+use rss::{ChannelBuilder, GuidBuilder, ItemBuilder, validation::Validate};
 use serde::{Deserialize, Serialize};
 use std::{
-    array, fs, path::{Path, PathBuf}, sync::LazyLock
+    fs,
+    path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
-// for quering typst metadata
+/// Tag name for querying typst metadata
 const META_TAG_NAME: &str = "<tola-meta>";
 
 #[derive(Debug)]
@@ -31,75 +27,74 @@ pub struct DateTimeUtc {
     pub second: u8,
 }
 
-#[allow(unused)]
-#[rustfmt::skip]
 impl DateTimeUtc {
     pub fn new(year: u16, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> Self {
         Self { year, month, day, hour, minute, second }
     }
-    
+
+    pub fn from_ymd(year: u16, month: u8, day: u8) -> Self {
+        Self::new(year, month, day, 0, 0, 0)
+    }
+
     pub fn validate(&self) -> Result<()> {
-        let (year, month, day, hour, minute, second) = (self.year, self.month, self.day, self.hour, self.minute, self.second);
-        let is_leap_year = |year: u16| (year.is_multiple_of(4) && year.is_multiple_of(100)) || year.is_multiple_of(400);
+        let Self { year, month, day, hour, minute, second } = *self;
+
+        if !(1..=12).contains(&month) {
+            bail!("month is invalid: {month}");
+        }
+
+        let is_leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
         let max_days = match month {
             1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
             4 | 6 | 9 | 11 => 30,
-            2 if is_leap_year(year) => 29,
+            2 if is_leap => 29,
             2 => 28,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
-        if month == 0 || month > 12 { bail!("month is invalid") }
-        if day == 0 || day > max_days{ bail!("day is invalid") }
-        if hour > 60 { bail!("hour is invalid") } 
-        if minute > 60 { bail!("minute is invalid") } 
-        if second > 60 { bail!("second is invalid") } 
+        if day == 0 || day > max_days {
+            bail!("day is invalid: {day}");
+        }
+        if hour > 23 {
+            bail!("hour is invalid: {hour}");
+        }
+        if minute > 59 {
+            bail!("minute is invalid: {minute}");
+        }
+        if second > 59 {
+            bail!("second is invalid: {second}");
+        }
 
         Ok(())
     }
 
-    
-    #[rustfmt::skip]
     pub fn to_rfc2822(&self) -> String {
-        // Algorithm: Zeller's congruence
-        fn calculate_weekday(year: u16, month: u8, day: u8) -> &'static str {
-            let (y, m, d) = (year as i32, month as i32, day as i32);
-            let (y, m) = if m < 3 { (y - 1, m + 12) } else { (y, m) };
+        const WEEKDAYS: [&str; 7] = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"];
+        const MONTHS: [&str; 12] = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ];
 
-            let weekday = (d + (13*(m+1))/5 + y + y/4 - y/100 + y/400) % 7;
-            match weekday {
-                0 => "Sat", 1 => "Sun", 2 => "Mon", 3 => "Tue",
-                4 => "Wed", 5 => "Thu", 6 => "Fri",
-                _ => unreachable!(),
-            }
-        }
-
-        let month_name = match self.month {
-            1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
-            5 => "May", 6 => "Jun", 7 => "Jul", 8 => "Aug",
-            9 => "Sep", 10 => "Oct", 11 => "Nov", 12 => "Dec",
-            _ => unreachable!(),
+        // Zeller's congruence
+        let (y, m) = if self.month < 3 {
+            (self.year as i32 - 1, self.month as i32 + 12)
+        } else {
+            (self.year as i32, self.month as i32)
         };
-        
-        let weekday = calculate_weekday(self.year, self.month, self.day);
-        
-        format!("{}, {:02} {} {:04} {:02}:{:02}:{:02} GMT",
-            weekday, self.day, month_name, self.year, self.hour, self.minute, self.second
+        let d = self.day as i32;
+        let weekday = ((d + (13 * (m + 1)) / 5 + y + y / 4 - y / 100 + y / 400) % 7) as usize;
+
+        format!(
+            "{}, {:02} {} {:04} {:02}:{:02}:{:02} GMT",
+            WEEKDAYS[weekday],
+            self.day,
+            MONTHS[(self.month - 1) as usize],
+            self.year,
+            self.hour,
+            self.minute,
+            self.second
         )
     }
-    
-    #[rustfmt::skip]
-    pub fn to_rfc3339(&self) -> String {
-        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-            self.year, self.month, self.day, self.hour, self.minute, self.second
-        )
-    }
-    
-    #[rustfmt::skip]
-    pub fn to_yyyy_mm_dd(&self) -> String {
-        format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
-    }
-    
 }
 
 pub struct RSSFeed {
@@ -123,7 +118,6 @@ struct PostMeta {
     author: Option<String>,
 }
 
-#[rustfmt::skip]
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "func", rename_all = "lowercase")]
 enum TypstElement {
@@ -146,25 +140,25 @@ pub fn build_rss(config: &'static SiteConfig) -> Result<()> {
 }
 
 impl TypstElement {
-    #[rustfmt::skip]
     fn into_html_tag(self, config: &'static SiteConfig) -> String {
         match self {
-            TypstElement::Space => " ".to_string(),
-            TypstElement::Linebreak => "<br/>".to_string(),
-            TypstElement::Text { text } => text,
-            TypstElement::Strike { text } => format!("<strike>{text}</strike>"),
-            TypstElement::Link { dest, body } => {
-                let dest = if dest.starts_with(['.', '/']) {
-                    let dest = dest.trim_start_matches('.').trim_start_matches('/');
-                    format!("{}/{}", config.base.url.clone().unwrap(), dest)
-                } else { dest };
-                format!("<a href=\"{dest}\">{}</a>", body.into_html_tag(config))
+            Self::Space => " ".into(),
+            Self::Linebreak => "<br/>".into(),
+            Self::Text { text } => text,
+            Self::Strike { text } => format!("<strike>{text}</strike>"),
+            Self::Link { dest, body } => {
+                let href = if dest.starts_with(['.', '/']) {
+                    let path = dest.trim_start_matches(['.', '/']);
+                    format!("{}/{}", config.base.url.as_deref().unwrap_or_default(), path)
+                } else {
+                    dest
+                };
+                format!("<a href=\"{href}\">{}</a>", body.into_html_tag(config))
             }
-            TypstElement::Sequence { children } => children
-                .into_iter()
-                .map(|child| child.into_html_tag(config))
-                .collect(),
-            TypstElement::OtherIgnored => "".to_string(),
+            Self::Sequence { children } => {
+                children.into_iter().map(|c| c.into_html_tag(config)).collect()
+            }
+            Self::OtherIgnored => String::new(),
         }
     }
 }
@@ -225,53 +219,31 @@ impl RSSFeed {
         Ok(rss)
     }
 
-    fn into_rss_xml(self, _config: &'static SiteConfig) -> Result<String> {
-        let items = self
+    fn into_rss_xml(self) -> Result<String> {
+        let items: Vec<_> = self
             .posts_meta
             .into_iter()
-            .filter_map(|post_meta| {
-                parse_date(post_meta.date).map(|date_rfc2822| {
-                    // println!("{}", post_meta.title.clone().unwrap());
+            .filter_map(|meta| {
+                let date_rfc2822 = parse_date(meta.date)?;
+                Some(
                     ItemBuilder::default()
-                        .title(post_meta.title.unwrap())
-                        .link(post_meta.link.clone())
+                        .title(meta.title?)
+                        .link(meta.link.clone())
                         .guid(
                             GuidBuilder::default()
                                 .permalink(true)
-                                .value(post_meta.link.unwrap())
+                                .value(meta.link?)
                                 .build(),
                         )
-                        .description(post_meta.summary)
-                        // .pub_date(item.date.clone())
+                        .description(meta.summary)
                         .pub_date(date_rfc2822)
-                        .author(post_meta.author)
-                        .build()
-                })
+                        .author(meta.author)
+                        .build(),
+                )
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        // let atom_href = format!(
-        //     "{}/{}",
-        //     config.base.url.clone().unwrap().trim_end_matches("/"),
-        //     config
-        //         .build
-        //         .rss
-        //         .path
-        //         .strip_prefix(&config.build.output)?
-        //         .to_str()
-        //         .unwrap()
-        // );
         let channel = ChannelBuilder::default()
-            // .atom_ext(
-            //     AtomExtensionBuilder::default()
-            //         .link(Link {
-            //             href: atom_href,
-            //             rel: "self".to_string(),
-            //             mime_type: Some("application/atom+xml".to_string()),
-            //             ..Default::default()
-            //         })
-            //         .build(),
-            // )
             .title(self.title)
             .link(self.base_url)
             .description(self.description)
@@ -279,12 +251,16 @@ impl RSSFeed {
             .generator(self.generator)
             .items(items)
             .build();
-        channel.validate().map_err(|e| anyhow::anyhow!(format!("rss validate: {e}")))?;
+
+        channel
+            .validate()
+            .map_err(|e| anyhow!("rss validate: {e}"))?;
+
         Ok(channel.to_string())
     }
 
     pub fn write_to_file(self, config: &'static SiteConfig) -> Result<()> {
-        let xml = self.into_rss_xml(config)?;
+        let xml = self.into_rss_xml()?;
         let rss_path = config.build.rss.path.as_path();
         fs::create_dir_all(rss_path.parent().unwrap())?;
         std::fs::write(rss_path, xml)?;
@@ -294,98 +270,64 @@ impl RSSFeed {
     }
 }
 
-#[allow(non_camel_case_types)]
-#[rustfmt::skip]
+/// Parse date string to RFC2822 format
 fn parse_date(date: Option<String>) -> Option<String> {
-    type RE_DATE = LazyLock<Regex>;
+    static RE_YYYY_MM_DD: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})$").unwrap());
+    static RE_RFC3339: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})T(?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})Z$").unwrap()
+    });
 
-    static RE_YYYY_MM_DD: RE_DATE = LazyLock::new(|| Regex::new(r"(?x)(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})").unwrap());
-    static RE_RFC3339: RE_DATE = LazyLock::new(|| {Regex::new(r"^(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})T(?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})Z$").unwrap()});
-    let date = date?;
+    let date_str = date?;
 
-    type FORMAT_YYYY_MM_DD = (u16, u8, u8);
-    type FORMAT_RFC3339 = (u16, u8, u8, u8, u8, u8);
-
-    #[allow(unused)]
-    enum Choice<A, B, C>{
-        A(A),
-        B(B),
-        C(C)
-    }
-
-
-    #[allow(unused)]
-    #[rustfmt::skip]
-    impl<A, B, C> Choice<A, B, C> {
-        fn get_a(self) -> A { if let Choice::A(a) = self { a } else { unreachable!() } }
-        fn get_b(self) -> B { if let Choice::B(b) = self { b } else { unreachable!() } }
-        fn get_c(self) -> C { if let Choice::C(c) = self { c } else { unreachable!() } }
-        fn a(a: A) -> Self {Choice::A(a)}
-        fn b(b: B) -> Self {Choice::B(b)}
-        fn c(c: C) -> Self {Choice::C(c)}
-    }
-
-    #[rustfmt::skip]
-    fn extract_date_from_re(date: &str, format: &'static str) -> Option<Choice<FORMAT_YYYY_MM_DD, FORMAT_RFC3339, ()>> {
-        let keys = ["year", "month", "day", "hour", "minute", "second"];
-        match format.to_uppercase().as_str() {
-            "YYYY-MM-DD" => {if let Some(caps) = RE_YYYY_MM_DD.captures(date) {
-                let year: u16 = caps[keys[0]].parse().unwrap();
-                let [month, day] = array::from_fn(|i| caps[keys[i + 1]].parse::<u8>().unwrap());
-                Some(Choice::a((year, month, day)))
-            } else { None }},
-            "RFC3339" => {if let Some(caps) = RE_RFC3339.captures(date) {
-                let year: u16 = caps[keys[0]].parse().unwrap();
-                let [month, day, hour, minute, second] = array::from_fn(|i| caps[keys[i + 1]].parse::<u8>().unwrap());
-                Some(Choice::b((year, month, day, hour, minute, second)))
-            } else { None }},
-            _ => unreachable!()
-        }        
-    }
-
-    let date = if let Some(date) = extract_date_from_re(&date, "YYYY-MM-DD") {
-        let (year, month, day) = date.get_a();
-        DateTimeUtc::new(year, month, day, 0, 0,0)
-    } else if let Some(date) = extract_date_from_re(&date, "RFC3339") {
-        let (year, month, day, hour, minute, second) = date.get_b();
-        DateTimeUtc::new(year, month, day, hour, minute, second)
+    let datetime = if let Some(caps) = RE_RFC3339.captures(&date_str) {
+        DateTimeUtc::new(
+            caps["y"].parse().ok()?,
+            caps["m"].parse().ok()?,
+            caps["d"].parse().ok()?,
+            caps["H"].parse().ok()?,
+            caps["M"].parse().ok()?,
+            caps["S"].parse().ok()?,
+        )
+    } else if let Some(caps) = RE_YYYY_MM_DD.captures(&date_str) {
+        DateTimeUtc::from_ymd(
+            caps["y"].parse().ok()?,
+            caps["m"].parse().ok()?,
+            caps["d"].parse().ok()?,
+        )
     } else {
-        // log!("date"; "Date format is not YYYY-MM-DD or RFC3339");
-        return None
+        return None;
     };
-    if let Result::Err(e) = date.validate() {
-        log!("date"; "{e}");
-        return None
-    };
-    Some(date.to_rfc2822())
 
+    if let Err(e) = datetime.validate() {
+        log!("date"; "{e}");
+        return None;
+    }
+
+    Some(datetime.to_rfc2822())
 }
 
-#[rustfmt::skip]
 fn query_meta(post_path: &Path, config: &'static SiteConfig) -> Result<PostMeta> {
     let root = config.get_root();
     let guid = get_guid_from_content_output_path(post_path, config)?;
 
-    // println!("{guid:?}");
-
-    let output = run_command!(&config.build.typst.command;
+    let output = run_command!(
+        &config.build.typst.command;
         "query", "--features", "html", "--format", "json",
         "--font-path", root, "--root", root,
         post_path,
         META_TAG_NAME, "--field", "value", "--one"
     )
     .with_context(|| {
-        format!("Failed to query metadata for rss in post path: {}\nMake sure your tag name is correct(\"{}\")",
-            post_path.display(), META_TAG_NAME
+        format!(
+            "Failed to query metadata for rss in post path: {}\nMake sure your tag name is correct(\"{}\")",
+            post_path.display(),
+            META_TAG_NAME
         )
     })?;
 
-    let queried_meta = str::from_utf8(output.stdout.as_slice()).unwrap();
-    let meta = extract_metadata(guid, queried_meta, config)?;
-    // println!("{:?}", queried_meta);
-
-    Ok(meta)
-    // todo!()
+    let queried_meta = std::str::from_utf8(&output.stdout)?;
+    extract_metadata(guid, queried_meta, config)
 }
 
 // Helper function used for extracting metadata from typst post

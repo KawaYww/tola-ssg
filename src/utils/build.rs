@@ -34,9 +34,7 @@ pub static CONTENT_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
 pub static ASSETS_CACHE: DirCache =
     LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
-pub const IGNORED_FILE_NAME: &[&str] = &[
-    ".DS_Store"
-];
+pub const IGNORED_FILE_NAME: &[&str] = &[".DS_Store"];
 
 struct Svg {
     data: Vec<u8>,
@@ -80,14 +78,25 @@ where
         return Ok((**cached).clone());
     }
 
-    let paths: Vec<PathBuf> = fs::read_dir(dir)?.flatten().map(|e| e.path()).collect();
+    let paths: Vec<PathBuf> = fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .collect();
+
     let parts: Vec<Vec<PathBuf>> = paths
         .par_iter()
         .map(|path| -> Result<Vec<_>> {
-            let file_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+            let file_name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+
             if path.is_dir() {
-                Ok(collect_files_vec(dir_cache, path, should_collect)?)
-            } else if path.is_file() && should_collect(path) && !IGNORED_FILE_NAME.contains(&file_name) {
+                collect_files_vec(dir_cache, path, should_collect)
+            } else if path.is_file()
+                && should_collect(path)
+                && !IGNORED_FILE_NAME.contains(&file_name)
+            {
                 Ok(vec![path.clone()])
             } else {
                 Ok(Vec::new())
@@ -95,11 +104,7 @@ where
         })
         .collect::<Result<_>>()?;
 
-    let total_len: usize = parts.iter().map(|v| v.len()).sum();
-    let mut files = Vec::with_capacity(total_len);
-    for mut v in parts {
-        files.append(&mut v);
-    }
+    let files: Vec<_> = parts.into_iter().flatten().collect();
 
     dir_cache
         .lock()
@@ -281,7 +286,6 @@ pub fn process_asset(
     Ok(())
 }
 
-#[rustfmt::skip]
 fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -> Result<Vec<u8>> {
     let mut svg_cnt = 0;
     let mut writer = Writer::new(Cursor::new(Vec::new()));
@@ -294,70 +298,61 @@ fn process_html(html_path: &Path, content: &[u8], config: &'static SiteConfig) -
 
     let mut svgs = vec![];
 
-    loop { match reader.read_event() {
-        Ok(Event::Start(elem)) => match elem.name().as_ref() {
-            b"html" => {
-                let mut elem = elem.into_owned();
-                elem.push_attribute(("lang", config.base.language.as_str()));
-                writer.write_event(Event::Start(elem))?;
-            },
-            b"h1" | b"h2" | b"h3" | b"h4" | b"h5" | b"h6" => {
-                let attrs: Vec<Attribute> = elem.attributes().flatten().map(|attr| {
-                    let key = attr.key;
-                    let value = attr.value;
-                    let value = if key.as_ref() == b"id" {
-                        let value = str::from_utf8(value.as_ref()).unwrap();
-                        let value = slugify_fragment(value, config);
-                        value.as_bytes().to_vec().into()
-                    } else {
-                        value
-                    };
-                    Attribute { key, value }
-                }).collect();
-                let elem = elem.to_owned().with_attributes(attrs);
-                writer.write_event(Event::Start(elem))?;
-            },
-            b"svg" => match config.build.typst.svg.extract_type {
-                ExtractSvgType::Embedded => writer.write_event(Event::Start(elem))?,
-                _ => {
-                    let svg = process_svg_in_html(html_path, &mut svg_cnt, &mut reader, &mut writer, elem, config)?;
-                    svgs.push(svg);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(elem)) => match elem.name().as_ref() {
+                b"html" => {
+                    let mut elem = elem.into_owned();
+                    elem.push_attribute(("lang", config.base.language.as_str()));
+                    writer.write_event(Event::Start(elem))?;
                 }
+                b"h1" | b"h2" | b"h3" | b"h4" | b"h5" | b"h6" => {
+                    let attrs: Vec<Attribute> = elem
+                        .attributes()
+                        .flatten()
+                        .map(|attr| {
+                            let key = attr.key;
+                            let value = if key.as_ref() == b"id" {
+                                let value = str::from_utf8(attr.value.as_ref()).unwrap();
+                                slugify_fragment(value, config).into_bytes().into()
+                            } else {
+                                attr.value
+                            };
+                            Attribute { key, value }
+                        })
+                        .collect();
+                    let elem = elem.to_owned().with_attributes(attrs);
+                    writer.write_event(Event::Start(elem))?;
+                }
+                b"svg" => match config.build.typst.svg.extract_type {
+                    ExtractSvgType::Embedded => writer.write_event(Event::Start(elem))?,
+                    _ => {
+                        let svg = process_svg_in_html(
+                            html_path, &mut svg_cnt, &mut reader, &mut writer, elem, config,
+                        )?;
+                        svgs.push(svg);
+                    }
+                },
+                _ => process_link_in_html(&mut writer, elem, config)?,
             },
-            // b"pre" => {
-            //     writer.write_event(Event::Start(elem))?;
-            //     while let Ok(event) = reader.read_event() {
-            //         let in_codeblock = matches!(&event, Event::Start(e) if e.name().as_ref() == b"code");
-            //         writer.write_event(event)?;
-            //     }
-            // },
-            _ => process_link_in_html(&mut writer, elem, config)?,
-        },
-        Ok(Event::End(elem)) => match elem.name().as_ref() {
-            b"head" => process_head_in_html(&mut writer, config).context("Failed to process heads in html")?,
-            _ => writer.write_event(Event::End(elem))?,
-        },
-        Ok(Event::Eof) => break,
-        Ok(elem) => writer.write_event(elem)?,
-        Err(elem) => panic!("Error at position {}: {:?}", reader.error_position(), elem),
-    }}
-    let html_path = html_path.to_path_buf();
-
-    match config.build.typst.svg.extract_type {
-        ExtractSvgType::Embedded => (),
-        _ => {
-            let svgs = svgs.into_iter().flatten().collect();
-            compress_svgs(svgs, &html_path, config).context("Failed to compress svgs").unwrap();
+            Ok(Event::End(elem)) => match elem.name().as_ref() {
+                b"head" => process_head_in_html(&mut writer, config)?,
+                _ => writer.write_event(Event::End(elem))?,
+            },
+            Ok(Event::Eof) => break,
+            Ok(elem) => writer.write_event(elem)?,
+            Err(e) => anyhow::bail!("XML parse error at position {}: {:?}", reader.error_position(), e),
         }
+    }
+
+    if !matches!(config.build.typst.svg.extract_type, ExtractSvgType::Embedded) {
+        let svgs: Vec<_> = svgs.into_iter().flatten().collect();
+        compress_svgs(svgs, html_path, config)?;
     }
 
     Ok(writer.into_inner().into_inner())
 }
 
-#[allow(unused)]
-fn process_codeblock_in_html() {}
-
-#[rustfmt::skip]
 fn process_svg_in_html(
     html_path: &Path,
     cnt: &mut i32,
@@ -371,22 +366,26 @@ fn process_svg_in_html(
         return Ok(None);
     }
 
-    let attrs: Vec<_> = elem.attributes().flatten()
-        .flat_map(|attr| -> Result<Attribute<'_>> {
-            match attr.key.as_ref() {
-                b"height" => Ok(process_height_attr(attr)?),
-                b"viewBox" => Ok(process_viewbox_attr(attr)?),
-                _ => Ok(attr),
-            }
+    let attrs: Vec<_> = elem
+        .attributes()
+        .flatten()
+        .filter_map(|attr| match attr.key.as_ref() {
+            b"height" => process_height_attr(attr).ok(),
+            b"viewBox" => process_viewbox_attr(attr).ok(),
+            _ => Some(attr),
         })
         .collect();
 
-    let mut should_continue = true;
     let mut svg_writer = Writer::new(Cursor::new(Vec::new()));
     svg_writer.write_event(Event::Start(BytesStart::new("svg").with_attributes(attrs)))?;
-    while let Ok(event) = reader.read_event() && should_continue {
-        should_continue = !matches!(&event, Event::End(e) if e.name().as_ref() == b"svg");
+
+    loop {
+        let event = reader.read_event()?;
+        let is_end = matches!(&event, Event::End(e) if e.name().as_ref() == b"svg");
         svg_writer.write_event(event)?;
+        if is_end {
+            break;
+        }
     }
 
     let svg_data = svg_writer.into_inner().into_inner();
@@ -472,61 +471,61 @@ fn extract_svg_size(svg_data: &str) -> Option<(f32, f32)> {
     Some((width, height))
 }
 
-// FUCK the size of generated `.avif` is so big, FUCKING pure rust avif library
-#[rustfmt::skip]
 fn compress_svgs(svgs: Vec<Svg>, html_path: &Path, config: &'static SiteConfig) -> Result<()> {
     let scale = config.get_scale();
-    let parent = html_path.parent().unwrap();
+    let parent = html_path.parent().context("Invalid html path")?;
     let inline_max_size = config.get_inline_max_size();
+    let relative_path = html_path
+        .strip_prefix(&config.build.output)
+        .map(|p| p.to_string_lossy())
+        .unwrap_or_default();
+    let relative_path = relative_path.trim_end_matches("index.html");
 
-    svgs.iter().enumerate().try_for_each(move |(cnt, svg)| -> Result<()> {
-        let relative_path = html_path
-            .strip_prefix(&config.build.output)
-            .unwrap()
-            .to_string_lossy();
-        let relative_path = relative_path.trim_end_matches("index.html");
+    for (cnt, svg) in svgs.iter().enumerate() {
         log!("svg"; "in {relative_path}: compress svg-{cnt}");
 
         let svg_data = svg.data.as_slice();
+        let use_svg = matches!(config.build.typst.svg.extract_type, ExtractSvgType::JustSvg)
+            || svg_data.len() < inline_max_size;
 
-        let svg_filename = match (&config.build.typst.svg.extract_type, svg_data.len()) {
-            (ExtractSvgType::JustSvg, _) => format!("svg-{cnt}.svg"),
-            (_, size) if size < inline_max_size => format!("svg-{cnt}.svg"),
-            _ => format!("svg-{cnt}.avif"),
+        let svg_filename = if use_svg {
+            format!("svg-{cnt}.svg")
+        } else {
+            format!("svg-{cnt}.avif")
         };
-        let svg_path = parent.join(svg_filename.as_str());
+        let svg_path = parent.join(&svg_filename);
 
-        let extract_type = match &config.build.typst.svg.extract_type {
-            ExtractSvgType::Embedded => return Ok(()),
-            ExtractSvgType::Builtin | ExtractSvgType::Magick | ExtractSvgType::Ffmpeg
-                if svg_data.len() < inline_max_size => ExtractSvgType::JustSvg,
-            e => e.clone(),
-        };
-        match extract_type {
-            ExtractSvgType::Embedded => unreachable!(),
+        match &config.build.typst.svg.extract_type {
+            ExtractSvgType::Embedded => continue,
+            _ if use_svg => fs::write(&svg_path, svg_data)?,
             ExtractSvgType::Magick => compress_svg_with_magick(&svg_path, svg_data, scale)?,
             ExtractSvgType::Ffmpeg => compress_svg_with_ffmpeg(&svg_path, svg_data, scale)?,
-            ExtractSvgType::Builtin => compress_svg_with_builtin(&svg_path, svg_data, svg.size, scale)?,
-            ExtractSvgType::JustSvg => fs::write(svg_path, svg_data)?,
+            ExtractSvgType::Builtin => {
+                compress_svg_with_builtin(&svg_path, svg_data, svg.size, scale)?
+            }
+            ExtractSvgType::JustSvg => unreachable!(),
         }
+
         log!("svg"; "in {relative_path}: finish compressing svg-{cnt}");
-        Ok(())
-    })?;
+    }
+
     Ok(())
 }
 
-#[rustfmt::skip]
 fn compress_svg_with_magick(svg_path: &Path, svg_data: &[u8], scale: f32) -> Result<()> {
-    let mut child_stdin = run_command_with_stdin!(["magick"];
-        "-background", "none", "-density", (scale * 96.).to_string(), "-", &svg_path
+    let density = (scale * 96.).to_string();
+    let mut child_stdin = run_command_with_stdin!(
+        ["magick"];
+        "-background", "none", "-density", density, "-", &svg_path
     )?;
     child_stdin.write_all(svg_data)?;
     Ok(())
 }
 
-#[rustfmt::skip]
 fn compress_svg_with_ffmpeg(svg_path: &Path, svg_data: &[u8], _scale: f32) -> Result<()> {
-    let mut child_stdin = run_command_with_stdin!(["ffmpeg"];
+    #[rustfmt::skip]
+    let mut child_stdin = run_command_with_stdin!(
+        ["ffmpeg"];
         "-f", "svg_pipe", "-frame_size", "1000000000", "-i", "pipe:",
         "-filter_complex", "[0:v]split[color][alpha];[alpha]alphaextract[alpha];[color]format=yuv420p[color]",
         "-map", "[color]",
@@ -543,12 +542,15 @@ fn compress_svg_with_ffmpeg(svg_path: &Path, svg_data: &[u8], _scale: f32) -> Re
     Ok(())
 }
 
-#[rustfmt::skip]
-fn compress_svg_with_builtin(svg_path: &Path, svg_data: &[u8], size: (f32, f32), scale: f32) -> Result<()> {
+fn compress_svg_with_builtin(
+    svg_path: &Path,
+    svg_data: &[u8],
+    size: (f32, f32),
+    scale: f32,
+) -> Result<()> {
     let (width, height) = (size.0 * scale, size.1 * scale);
 
     let pixmap: Vec<_> = svg_data
-        .to_vec()
         .chunks(4)
         .map(|chunk| ravif::RGBA8::new(chunk[0], chunk[1], chunk[2], chunk[3]))
         .collect();
@@ -637,8 +639,10 @@ fn process_relative_or_external_link(value: &str, _config: &'static SiteConfig) 
     Ok(link)
 }
 
-#[rustfmt::skip]
-fn process_head_in_html(writer: &mut Writer<Cursor<Vec<u8>>>, config: &'static SiteConfig) -> Result<()> {
+fn process_head_in_html(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    config: &'static SiteConfig,
+) -> Result<()> {
     let title = config.base.title.as_str();
     let description = config.base.description.as_str();
 
@@ -656,26 +660,27 @@ fn process_head_in_html(writer: &mut Writer<Cursor<Vec<u8>>>, config: &'static S
         writer.write_event(Event::End(BytesEnd::new("meta")))?;
     }
 
-    if config.build.tailwind.enable
-        && let Some(input) = &config.build.tailwind.input
-    {
-        let input = {
-            let base_path = &config.build.base_path;
-            let assets = config.build.assets.as_path().canonicalize().unwrap();
-            let input = input.canonicalize().unwrap();
-            let input = input.strip_prefix(assets).unwrap();
-            let input = base_path.join(input);
-            PathBuf::from("/").join(input)
-        };
-        let input = input.to_string_lossy();
-        let mut elem = BytesStart::new("link");
-        elem.push_attribute(("rel", "stylesheet"));
-        elem.push_attribute(("href", input));
-        writer.write_event(Event::Start(elem))?;
+    if config.build.tailwind.enable {
+        if let Some(input) = &config.build.tailwind.input {
+            let href = compute_stylesheet_href(input, config)?;
+            let mut elem = BytesStart::new("link");
+            elem.push_attribute(("rel", "stylesheet"));
+            elem.push_attribute(("href", href.as_str()));
+            writer.write_event(Event::Start(elem))?;
+        }
     }
 
     writer.write_event(Event::End(BytesEnd::new("head")))?;
     Ok(())
+}
+
+fn compute_stylesheet_href(input: &Path, config: &'static SiteConfig) -> Result<String> {
+    let base_path = &config.build.base_path;
+    let assets = config.build.assets.canonicalize()?;
+    let input = input.canonicalize()?;
+    let relative = input.strip_prefix(&assets)?;
+    let path = PathBuf::from("/").join(base_path).join(relative);
+    Ok(path.to_string_lossy().into_owned())
 }
 
 fn get_asset_top_levels(assets_dir: &Path) -> &'static [OsString] {

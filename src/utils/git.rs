@@ -1,10 +1,7 @@
-/// Fucking
-// Fucking
-//
-// Everyone holds hands to form a circle around `git subprocess` and dances.
-//
-// Fucking ! !
-// Fucking ! ! ! !
+//! Git operations for the static site generator.
+//!
+//! Handles repository initialization, commits, and remote pushing.
+
 use crate::{config::SiteConfig, init::init_ignored_files, log, run_command};
 use anyhow::{Context, Result, anyhow, bail};
 use gix::{
@@ -21,40 +18,51 @@ use gix::{
 };
 use std::{fs, path::Path};
 
-#[derive(Debug, Default)]
-struct Remotes(Vec<Remote>);
-
-#[derive(Debug, Default)]
-struct Remote {
-    pub name: String,
-    pub url: String,
+/// Repository root path helper
+fn repo_root(repo: &Repository) -> Result<&Path> {
+    repo.path().parent().ok_or_else(|| anyhow!("Invalid repository path"))
 }
 
-impl Remotes {
-    #[rustfmt::skip]
-    fn new(repo: &Repository) -> Result<Self> {
-        let root = repo.path().parent().unwrap();
+#[derive(Debug)]
+struct Remote {
+    name: String,
+    url: String,
+}
+
+impl Remote {
+    /// Parse remotes from `git remote -v` output
+    fn list_from_repo(repo: &Repository) -> Result<Vec<Self>> {
+        let root = repo_root(repo)?;
         let output = run_command!(root; ["git"]; "remote", "-v")?;
-        let output = str::from_utf8(&output.stdout)?;
+        let stdout = std::str::from_utf8(&output.stdout)?;
 
-        let remotes = output.lines().filter(|line| line.ends_with("fetch)")).map(|line| {
-            let parts: Vec<_> = line.split_whitespace().collect();
-            let name = parts[0].to_owned();
-            let url = parts[1].to_owned();
-            assert_eq!(name, "origin");
+        let remotes = stdout
+            .lines()
+            .filter(|line| line.ends_with("(fetch)"))
+            .filter_map(|line| {
+                let mut parts = line.split_whitespace();
+                Some(Remote {
+                    name: parts.next()?.to_owned(),
+                    url: parts.next()?.to_owned(),
+                })
+            })
+            .collect();
 
-            Remote { name, url }
-        })
-        .collect();
-
-        Ok(Self(remotes))
+        Ok(remotes)
     }
 
-    fn any<P>(&self, p: P) -> bool
-    where
-        P: Fn(&Remote) -> bool,
-    {
-        self.0.iter().any(p)
+    /// Check if origin remote exists with matching URL
+    fn origin_matches(repo: &Repository, expected_url: &str) -> Result<bool> {
+        Ok(Self::list_from_repo(repo)?
+            .iter()
+            .any(|r| r.name == "origin" && r.url == expected_url))
+    }
+
+    /// Check if origin remote exists
+    fn origin_exists(repo: &Repository) -> Result<bool> {
+        Ok(Self::list_from_repo(repo)?
+            .iter()
+            .any(|r| r.name == "origin"))
     }
 }
 
@@ -75,18 +83,9 @@ pub fn commit_all(repo: &ThreadSafeRepository, message: &str) -> Result<()> {
     }
 
     let repo_local = repo.to_thread_local();
+    let root = repo_root(&repo_local)?;
 
-    let root = repo_local
-        .path()
-        .parent()
-        .ok_or(anyhow!("Invalid repository path"))?;
-
-    let git_ignore = root.join(".gitignore");
-    let git_ignore = if git_ignore.exists() {
-        fs::read(git_ignore)?
-    } else {
-        vec![]
-    };
+    let git_ignore = read_gitignore(root)?;
 
     let mut index = State::new(repo_local.object_hash());
     let tree = build_tree_from_dir(root, repo, &mut index, &git_ignore)?;
@@ -96,68 +95,94 @@ pub fn commit_all(repo: &ThreadSafeRepository, message: &str) -> Result<()> {
     file.write(gix::index::write::Options::default())?;
 
     let tree_id = repo_local.write_object(&tree)?;
-    let commit_id = repo_local.commit("HEAD", message, tree_id, parent_ids_or_empty(repo)?)?;
+    let parent_ids = get_parent_ids(repo)?;
+    let commit_id = repo_local.commit("HEAD", message, tree_id, parent_ids)?;
 
-    log!("commit"; "commit for blob `{commit_id:?}` in  repo `{}`", root.display());
+    log!("commit"; "created commit `{commit_id}` in repo `{}`", root.display());
     Ok(())
 }
 
-fn parent_ids_or_empty(repo: &ThreadSafeRepository) -> Result<Vec<gix::ObjectId>> {
-    let repo_local = repo.to_thread_local();
-
-    let ids = match repo_local.find_reference("refs/heads/main") {
-        Err(_) => NO_PARENT_IDS.to_vec(),
-        Ok(refs) => {
-            let target = refs.target();
-            [target.id().to_owned()].to_vec()
-        }
-    };
-    Ok(ids)
+/// Read .gitignore file if it exists
+fn read_gitignore(root: &Path) -> Result<Vec<u8>> {
+    let path = root.join(".gitignore");
+    if path.exists() {
+        Ok(fs::read(path)?)
+    } else {
+        Ok(Vec::new())
+    }
 }
 
-#[rustfmt::skip]
+/// Get parent commit IDs (empty for initial commit)
+fn get_parent_ids(repo: &ThreadSafeRepository) -> Result<Vec<gix::ObjectId>> {
+    let repo_local = repo.to_thread_local();
+
+    Ok(repo_local
+        .find_reference("refs/heads/main")
+        .ok()
+        .map(|refs| vec![refs.target().id().to_owned()])
+        .unwrap_or_else(|| NO_PARENT_IDS.to_vec()))
+}
+
 pub fn push(repo: &ThreadSafeRepository, config: &'static SiteConfig) -> Result<()> {
-    let remote_url = config.deploy.github_provider.url.as_str();
-    log!("git"; "pushing to `{remote_url}`");
+    let github = &config.deploy.github_provider;
+    log!("git"; "pushing to `{}`", github.url);
 
     let repo_local = repo.to_thread_local();
-    let root = repo_local.path().parent().ok_or(anyhow!("Invalid repository path"))?;
-    let token_path = config.deploy.github_provider.token_path.as_ref();
-    let force = config.deploy.force;
-    let remote_url_in_config = config.deploy.github_provider.url.as_str();
-    let branch_in_config = config.deploy.github_provider.branch.as_str();
+    let root = repo_root(&repo_local)?;
 
-    let token = match token_path {
-        None => String::new(),
-        Some(token_path) => fs::read_to_string(token_path)
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
+    let remote_url = build_authenticated_url(&github.url, github.token_path.as_ref())?;
+    let remote_action = if Remote::origin_exists(&repo_local)? {
+        "set-url"
+    } else {
+        "add"
     };
 
-    let split_symbol = if token.is_empty() { "" } else { "@" };
-    let remote_url = format!(
-        "https://{token}{split_symbol}{}",
-        remote_url_in_config
-            .strip_prefix("https://")
-            .context("the remote url starts without https")
-            .unwrap()
-    );
+    run_command!(root; ["git"]; "remote", remote_action, "origin", &remote_url)?;
 
-    let remote_action = if Remotes::new(&repo_local)?.any(|remote| remote.name == "origin") { "set-url" } else { "add" };
+    // Build push command with optional force flag
+    if config.deploy.force {
+        run_command!(root; ["git"]; "push", "--set-upstream", "origin", &github.branch, "-f")?;
+    } else {
+        run_command!(root; ["git"]; "push", "--set-upstream", "origin", &github.branch)?;
+    }
 
-    run_command!(root; ["git"];
-        "remote", remote_action, "origin", &remote_url
-    )?;
-    run_command!(root; ["git"];
-        "push", "--set-upstream", "origin", branch_in_config, if force { "-f" } else { "" }
-    )?;
+    // Verify remote URL matches config (unless force is enabled)
+    if !config.deploy.force && !Remote::origin_matches(&repo_local, &remote_url)? {
+        bail!(
+            "Remote origin URL in `{root:?}` doesn't match [deploy.git] config. \
+             Enable [deploy.force] or fix manually."
+        );
+    }
 
-    let remote_url_equals_config = Remotes::new(&repo_local)?.any(|remote| remote.name == "origin" && remote.url == remote_url);
-    if !remote_url_equals_config && !force { bail!(
-        "The url in remote `origin` in repo `{root:?}` not equal to url in [deploy.git], enable [deploy.force] or reset url manually"
-    )}
     Ok(())
+}
+
+/// Build authenticated HTTPS URL with optional token
+fn build_authenticated_url(url: &str, token_path: Option<&std::path::PathBuf>) -> Result<String> {
+    let base_url = url
+        .strip_prefix("https://")
+        .context("Remote URL must start with https://")?;
+
+    let token = token_path
+        .map(|p| fs::read_to_string(p).unwrap_or_default().trim().to_owned())
+        .unwrap_or_default();
+
+    if token.is_empty() {
+        Ok(format!("https://{base_url}"))
+    } else {
+        Ok(format!("https://{token}@{base_url}"))
+    }
+}
+
+/// Check if path should be ignored based on .gitignore patterns
+fn is_ignored(path: &str, git_ignore: &[u8]) -> bool {
+    gix::ignore::parse(git_ignore).any(|(pattern, _, _)| {
+        wildmatch(
+            path.into(),
+            pattern.text.as_bstr(),
+            wildmatch::Mode::NO_MATCH_SLASH_LITERAL,
+        )
+    })
 }
 
 fn build_tree_from_dir(
@@ -168,7 +193,7 @@ fn build_tree_from_dir(
 ) -> Result<Tree> {
     let mut tree = Tree::empty();
     let repo_local = repo.to_thread_local();
-    let repo_root = repo.path().parent().unwrap();
+    let root = repo.path().parent().context("Invalid repo path")?;
 
     for entry in fs::read_dir(dir_root)? {
         let entry = entry?;
@@ -176,31 +201,25 @@ fn build_tree_from_dir(
         let filename: BString = entry
             .file_name()
             .into_string()
-            .map_err(|_| anyhow!("Invalid file name"))?
+            .map_err(|_| anyhow!("Invalid UTF-8 in filename"))?
             .into();
 
-        let mut ignored_paths = gix::ignore::parse(git_ignore);
+        let relative_path = path.strip_prefix(root)?.to_string_lossy();
+
+        // Skip ignored paths
+        if is_ignored(&relative_path, git_ignore) {
+            continue;
+        }
 
         if path.is_dir() && filename != ".git" {
             let sub_tree = build_tree_from_dir(&path, repo, index, git_ignore)?;
             let tree_id = repo_local.write_object(&sub_tree)?.detach();
 
-            let path = path.strip_prefix(repo_root)?.to_string_lossy().into_owned();
-            ignored_paths
-                .all(|(ignore_path, _, _)| {
-                    !wildmatch(
-                        path.as_str().into(),
-                        ignore_path.text.as_bstr(),
-                        wildmatch::Mode::NO_MATCH_SLASH_LITERAL,
-                    )
-                })
-                .then(|| {
-                    tree.entries.push(tree::Entry {
-                        mode: tree::EntryKind::Tree.into(),
-                        oid: tree_id,
-                        filename,
-                    });
-                });
+            tree.entries.push(tree::Entry {
+                mode: tree::EntryKind::Tree.into(),
+                oid: tree_id,
+                filename,
+            });
         } else if path.is_file() {
             let contents = fs::read(&path)?;
             let blob_id = repo_local.write_blob(contents)?.into();
@@ -212,38 +231,27 @@ fn build_tree_from_dir(
                 Mode::FILE,
                 filename.as_ref(),
             );
-            let path = path.strip_prefix(repo_root)?.to_string_lossy().into_owned();
-            ignored_paths
-                .all(|(ignore_path, _, _)| {
-                    !wildmatch(
-                        path.as_str().into(),
-                        ignore_path.text.as_bstr(),
-                        wildmatch::Mode::NO_MATCH_SLASH_LITERAL,
-                    )
-                })
-                .then(|| {
-                    tree.entries.push(tree::Entry {
-                        mode: tree::EntryKind::Blob.into(),
-                        oid: blob_id,
-                        filename,
-                    });
-                });
+
+            tree.entries.push(tree::Entry {
+                mode: tree::EntryKind::Blob.into(),
+                oid: blob_id,
+                filename,
+            });
         }
     }
 
+    // Sort entries according to git tree ordering (directories get trailing slash)
     tree.entries.sort_by(|a, b| {
-        let mut a_key = a.filename.as_slice().to_vec();
-        let mut b_key = b.filename.as_slice().to_vec();
-
-        let tree_mode = tree::EntryKind::Tree.into();
-        if a.mode == tree_mode {
-            a_key.push(b'/');
-        }
-        if b.mode == tree_mode {
-            b_key.push(b'/');
-        }
-
-        a_key.cmp(&b_key)
+        let tree_mode: tree::EntryMode = tree::EntryKind::Tree.into();
+        let key = |e: &tree::Entry| {
+            let mut k = e.filename.as_slice().to_vec();
+            if e.mode == tree_mode {
+                k.push(b'/');
+            }
+            k
+        };
+        key(a).cmp(&key(b))
     });
+
     Ok(tree)
 }

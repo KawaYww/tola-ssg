@@ -1,54 +1,41 @@
 use crate::config::{SiteConfig, SlugMode};
 use std::path::{Path, PathBuf};
 
-const FORBIDDEN: &[char] = &[
+/// Characters forbidden in file paths and fragments
+const FORBIDDEN_CHARS: &[char] = &[
     '<', '>', ':', '|', '?', '*', '#', '\\', '(', ')', '[', ']', '\t', '\r', '\n',
 ];
 
+/// Convert fragment text to URL-safe format based on config
 pub fn slugify_fragment(text: &str, config: &'static SiteConfig) -> String {
-    let slug_mode = &config.build.slug.fragment;
-
-    match slug_mode {
+    match config.build.slug.fragment {
         SlugMode::Safe => sanitize_text(text),
         SlugMode::On => slug::slugify(text),
         SlugMode::No => text.to_owned(),
     }
 }
 
+/// Convert path to URL-safe format based on config
 pub fn slugify_path(path: impl AsRef<Path>, config: &'static SiteConfig) -> PathBuf {
-    let slug_mode = &config.build.slug.path;
-    let path = path.as_ref();
-
-    match slug_mode {
-        SlugMode::Safe => slugify_safe(path),
-        SlugMode::On => slugify_on(path),
-        SlugMode::No => path.to_path_buf(),
+    match config.build.slug.path {
+        SlugMode::Safe => sanitize_path(path.as_ref()),
+        SlugMode::On => slug::slugify(path.as_ref().to_string_lossy()).into(),
+        SlugMode::No => path.as_ref().to_path_buf(),
     }
 }
 
+/// Remove forbidden characters and replace whitespace with underscores
 fn sanitize_text(text: &str) -> String {
     text.trim()
         .chars()
-        .filter(|c| !FORBIDDEN.contains(c))
+        .filter(|c| !FORBIDDEN_CHARS.contains(c))
         .map(|c| if c.is_whitespace() { '_' } else { c })
-        .collect::<String>()
+        .collect()
 }
 
+/// Sanitize each component of a path
 fn sanitize_path(path: &Path) -> PathBuf {
-    let components: Vec<_> = path
-        .components()
-        .map(|segmant| segmant.as_os_str().to_string_lossy())
-        .map(|s| sanitize_text(s.as_ref()))
-        .collect();
-
-    PathBuf::from_iter(components)
-}
-
-fn slugify_safe(path: impl AsRef<Path>) -> PathBuf {
-    sanitize_path(path.as_ref())
-}
-
-fn slugify_on(path: impl AsRef<Path>) -> PathBuf {
-    let path = sanitize_path(path.as_ref());
-    slug::slugify(path.to_string_lossy()).into()
+    path.components()
+        .map(|c| sanitize_text(&c.as_os_str().to_string_lossy()))
+        .collect()
 }

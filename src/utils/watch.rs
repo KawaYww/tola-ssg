@@ -9,106 +9,122 @@ use std::{
     time::Duration,
 };
 
+/// Process changed content files (.typ)
 pub fn process_watched_content(files: &[&PathBuf], config: &'static SiteConfig) -> Result<()> {
-    let flag = config.get_root().starts_with("./");
-
     files.par_iter().for_each(|path| {
-        let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
-        let path = if flag {
-            &Path::new("./").join(path)
-        } else {
-            path
-        };
-
-        if let Err(e) = process_content(path, config, true) {
+        let path = normalize_path(path, config);
+        if let Err(e) = process_content(&path, config, true) {
             log!("watch"; "{e}");
         }
     });
 
+    // Rebuild tailwind CSS if enabled
     if config.build.tailwind.enable {
-        let input = config.build.tailwind.input.as_ref().unwrap();
-        let output = config.build.output.as_path();
-        let relative_asset_path = input
-            .strip_prefix(config.build.assets.as_path())?
-            .to_str()
-            .ok_or(anyhow!("Invalid path"))?;
-        let input = input.canonicalize().unwrap();
-        let output_path = output.canonicalize().unwrap().join(relative_asset_path);
-
-        run_command!(config.get_root(); &config.build.tailwind.command;
-            "-i", input, "-o", output_path, if config.build.minify { "--minify" } else { "" }
-        )?;
+        rebuild_tailwind(config)?;
     }
 
     Ok(())
 }
 
+/// Process changed asset files
 pub fn process_watched_assets(
     files: &[&PathBuf],
     config: &'static SiteConfig,
     should_wait_until_stable: bool,
 ) -> Result<()> {
-    let flag = config.get_root().starts_with("./");
-
     files
         .par_iter()
         .filter(|path| path.exists())
         .try_for_each(|path| {
-            let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
-            let path = if flag {
-                &Path::new("./").join(path)
-            } else {
-                path
-            };
-            match process_asset(path, config, should_wait_until_stable, true) {
-                Ok(()) => Ok(()),
-                Err(e) => Err(e),
-            }
-        })?;
-
-    Ok(())
+            let path = normalize_path(path, config);
+            process_asset(&path, config, should_wait_until_stable, true)
+        })
 }
 
-#[rustfmt::skip]
+/// Process all watched file changes
 pub fn process_watched_files(files: &[PathBuf], config: &'static SiteConfig) -> Result<()> {
-    let posts_files: Vec<_> = files
-        .par_iter()
-        .filter(|path| path.exists() && path.extension().and_then(|s| s.to_str()) == Some("typ"))
+    let content_files: Vec<_> = files
+        .iter()
+        .filter(|p| p.exists() && p.extension().is_some_and(|ext| ext == "typ"))
         .collect();
 
-    let flag = config.get_root().starts_with("./");
-    let assets_files: Vec<_> = files
-        .par_iter()
-        .filter(|path|  {
-            let path = path.strip_prefix(env::current_dir().unwrap()).unwrap();
-            let path = if flag {
-                &Path::new("./").join(path)
-            } else {
-                path
-            };
-            path.starts_with(&config.build.assets)
+    let asset_files: Vec<_> = files
+        .iter()
+        .filter(|p| {
+            let normalized = normalize_path(p, config);
+            normalized.starts_with(&config.build.assets)
         })
         .collect();
 
-    if !posts_files.is_empty() { process_watched_content(&posts_files, config)? }
-    if !assets_files.is_empty() { process_watched_assets(&assets_files, config, true)? }
+    if !content_files.is_empty() {
+        process_watched_content(&content_files, config)?;
+    }
+    if !asset_files.is_empty() {
+        process_watched_assets(&asset_files, config, true)?;
+    }
 
     Ok(())
 }
 
-#[rustfmt::skip]
-pub fn wait_until_stable(path: &Path, max_retries: usize) -> Result<()> {
-    let mut last_size = fs::metadata(path)?.len();
-    let mut retries = 0;
-    let timeout = Duration::from_millis(50);
+/// Normalize path relative to project root
+fn normalize_path(path: &Path, config: &SiteConfig) -> PathBuf {
+    let uses_relative_root = config.get_root().starts_with("./");
+    let stripped = path
+        .strip_prefix(env::current_dir().unwrap_or_default())
+        .unwrap_or(path);
 
-    while retries < max_retries {
-        thread::sleep(timeout);
+    if uses_relative_root {
+        Path::new("./").join(stripped)
+    } else {
+        stripped.to_path_buf()
+    }
+}
+
+/// Rebuild tailwind CSS
+fn rebuild_tailwind(config: &'static SiteConfig) -> Result<()> {
+    let input = config
+        .build
+        .tailwind
+        .input
+        .as_ref()
+        .ok_or_else(|| anyhow!("Tailwind input path not configured"))?;
+
+    let relative_path = input
+        .strip_prefix(&config.build.assets)?
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid tailwind input path"))?;
+
+    let input = input.canonicalize()?;
+    let output = config
+        .build
+        .output
+        .canonicalize()?
+        .join(relative_path);
+
+    run_command!(
+        config.get_root();
+        &config.build.tailwind.command;
+        "-i", input, "-o", output,
+        if config.build.minify { "--minify" } else { "" }
+    )?;
+
+    Ok(())
+}
+
+/// Wait for file to stop being written to
+pub fn wait_until_stable(path: &Path, max_retries: usize) -> Result<()> {
+    const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+    let mut last_size = fs::metadata(path)?.len();
+
+    for _ in 0..max_retries {
+        thread::sleep(POLL_INTERVAL);
         let current_size = fs::metadata(path)?.len();
-        if current_size == last_size { return Ok(()) }
+        if current_size == last_size {
+            return Ok(());
+        }
         last_size = current_size;
-        retries += 1;
     }
 
-    bail!("File did not stabilize after {} retries", max_retries);
+    bail!("File did not stabilize after {max_retries} retries")
 }
