@@ -774,7 +774,6 @@ fn compute_asset_href(asset_path: &Path, base_path: &Path) -> Result<String> {
     let relative_path = without_dot_prefix
         .strip_prefix("assets/")
         .unwrap_or(without_dot_prefix);
-    
     let path = PathBuf::from("/").join(base_path).join(relative_path);
     Ok(path.to_string_lossy().into_owned())
 }
