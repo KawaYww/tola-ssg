@@ -251,7 +251,8 @@ pub struct BaseConfig {
     #[serde(default)]
     pub copyright: String,
 
-    /// Extra HTML elements to insert into the `<head>` section
+    /// Extra HTML elements to insert into the `<head>` section.
+    /// Elements are inserted as raw HTML without escaping.
     /// e.g.: `<meta name="darkreader-lock">`
     #[serde(default)]
     pub head_extra: Vec<String>,
