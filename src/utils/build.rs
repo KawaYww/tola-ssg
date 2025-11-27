@@ -702,7 +702,7 @@ fn process_head_in_html(
         write_script_elem(writer, &src, script.is_defer(), script.is_async())?;
     }
 
-    // Raw HTML elements
+    // Raw HTML elements from config file (trusted input from site owner)
     for raw in &head.elements {
         writer.get_mut().write_all(raw.as_bytes())?;
     }
@@ -741,6 +741,7 @@ fn write_script_elem(
         elem.push_attribute(("async", ""));
     }
     writer.write_event(Event::Start(elem))?;
+    // Add a space to ensure proper HTML output - empty script tags may not be parsed correctly
     writer.write_event(Event::Text(BytesText::new(" ")))?;
     writer.write_event(Event::End(BytesEnd::new("script")))?;
     Ok(())
@@ -748,15 +749,16 @@ fn write_script_elem(
 
 /// Compute href for an asset path relative to base_path
 fn compute_asset_href(asset_path: &Path, base_path: &Path) -> Result<String> {
-    // Strip the leading "./" or "assets/" prefix if present to get relative path within assets
-    let relative = asset_path
+    // Strip the leading "./" prefix if present
+    let without_dot_prefix = asset_path
         .strip_prefix("./")
         .unwrap_or(asset_path);
-    let relative = relative
+    // Strip the "assets/" prefix if present to get relative path within assets
+    let relative_path = without_dot_prefix
         .strip_prefix("assets/")
-        .unwrap_or(relative);
+        .unwrap_or(without_dot_prefix);
     
-    let path = PathBuf::from("/").join(base_path).join(relative);
+    let path = PathBuf::from("/").join(base_path).join(relative_path);
     Ok(path.to_string_lossy().into_owned())
 }
 
