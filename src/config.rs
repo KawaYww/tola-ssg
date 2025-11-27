@@ -85,6 +85,14 @@ pub mod config_defaults {
             }
         }
 
+        pub mod sitemap {
+            use std::path::PathBuf;
+
+            pub fn path() -> PathBuf {
+                "sitemap.xml".into()
+            }
+        }
+
         #[allow(unused)]
         pub mod slug {
             use crate::config::SlugMode;
@@ -967,6 +975,10 @@ pub struct BuildConfig {
     #[serde(default)]
     pub rss: RssConfig,
 
+    /// Sitemap configuration
+    #[serde(default)]
+    pub sitemap: SitemapConfig,
+
     /// URL slugification settings
     #[serde(default)]
     pub slug: SlugConfig,
@@ -997,6 +1009,22 @@ pub struct RssConfig {
     /// Output path for RSS feed file
     #[serde(default = "config_defaults::build::rss::path")]
     #[educe(Default = config_defaults::build::rss::path())]
+    pub path: PathBuf,
+}
+
+/// `[build.sitemap]` section
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Default)]
+#[serde(deny_unknown_fields)]
+pub struct SitemapConfig {
+    /// Enable sitemap generation
+    #[serde(default = "config_defaults::r#false")]
+    #[educe(Default = config_defaults::r#false())]
+    pub enable: bool,
+
+    /// Output path for sitemap file
+    #[serde(default = "config_defaults::build::sitemap::path")]
+    #[educe(Default = config_defaults::build::sitemap::path())]
     pub path: PathBuf,
 }
 
@@ -1381,6 +1409,7 @@ impl SiteConfig {
         self.build.templates = Self::normalize_path(&root.join(&self.build.templates));
         self.build.utils = Self::normalize_path(&root.join(&self.build.utils));
         self.build.rss.path = self.build.output.join(&self.build.rss.path);
+        self.build.sitemap.path = self.build.output.join(&self.build.sitemap.path);
 
         // Normalize tailwind input path
         if let Some(input) = self.build.tailwind.input.as_ref() {
@@ -1424,6 +1453,10 @@ impl SiteConfig {
 
         if self.build.rss.enable && self.base.url.is_none() {
             bail!("[base.url] is required for RSS generation");
+        }
+
+        if self.build.sitemap.enable && self.base.url.is_none() {
+            bail!("[base.url] is required for sitemap generation");
         }
 
         Self::check_command_installed("[build.typst.command]", &self.build.typst.command)?;

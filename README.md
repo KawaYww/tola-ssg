@@ -17,6 +17,7 @@ e.g.,
 - deploy the generated site to github page (other provider is in plan)
 - provide template file with a small kernal, so that most people can customize their own site easily (in plan)
 - rss2.0 support
+- sitemap.xml support
 
 ## Philosophy
 
