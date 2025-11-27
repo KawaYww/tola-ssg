@@ -51,9 +51,14 @@ impl Sitemap {
         let urls: Vec<SitemapUrl> = content_files
             .par_iter()
             .filter_map(|path| {
-                get_guid_from_content_output_path(path, config).ok()
+                match get_guid_from_content_output_path(path, config) {
+                    Ok(loc) => Some(SitemapUrl { loc }),
+                    Err(e) => {
+                        log!("sitemap"; "Failed to generate URL for {:?}: {}", path, e);
+                        None
+                    }
+                }
             })
-            .map(|loc| SitemapUrl { loc })
             .collect();
 
         Ok(Self { urls })
