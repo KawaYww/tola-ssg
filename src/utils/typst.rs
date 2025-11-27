@@ -105,13 +105,6 @@ impl TolaWorld {
             .resolve(&self.root)
             .ok_or(FileError::AccessDenied)
     }
-
-    /// Reset caches for a new compilation.
-    #[allow(dead_code)]
-    pub fn reset(&self) {
-        self.sources.lock().clear();
-        self.files.lock().clear();
-    }
 }
 
 impl World for TolaWorld {

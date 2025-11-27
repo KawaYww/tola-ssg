@@ -267,6 +267,7 @@ pub fn process_content(
     }
 
     // Use typst library to compile the content
+    // Note: The root directory is used as a font path, which includes assets/fonts
     let html_content = crate::utils::typst::compile_to_html(root, content_path, &[])?;
     let html_content = process_html(&html_path, &html_content, config)?;
 
