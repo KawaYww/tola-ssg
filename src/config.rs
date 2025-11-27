@@ -1426,7 +1426,7 @@ impl SiteConfig {
             bail!("[base.url] is required for RSS generation");
         }
 
-        Self::check_command_installed("[build.typst.command]", &self.build.typst.command)?;
+        // Note: typst command validation removed - we now use the typst library directly
 
         if let Some(base_url) = &self.base.url
             && !base_url.starts_with("http")
