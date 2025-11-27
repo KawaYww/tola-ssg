@@ -35,8 +35,7 @@
         (base32 "0000000000000000000000000000000000000000000000000000"))))
     (build-system cargo-build-system)
     (arguments
-     `(#:install-source? #f
-       #:cargo-build-flags '("--release")))
+     `(#:install-source? #f))
     (native-inputs
      (list nasm pkg-config))
     (home-page "https://github.com/KawaYww/tola-ssg")
