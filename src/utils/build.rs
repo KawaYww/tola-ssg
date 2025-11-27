@@ -646,39 +646,118 @@ fn process_relative_or_external_link(value: &str, _config: &'static SiteConfig) 
     Ok(link)
 }
 
+/// Get MIME type for icon based on file extension
+fn get_icon_mime_type(path: &Path) -> &'static str {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| match ext.to_lowercase().as_str() {
+            "ico" => "image/x-icon",
+            "png" => "image/png",
+            "svg" => "image/svg+xml",
+            "avif" => "image/avif",
+            "webp" => "image/webp",
+            "gif" => "image/gif",
+            "jpg" | "jpeg" => "image/jpeg",
+            _ => "image/x-icon",
+        })
+        .unwrap_or("image/x-icon")
+}
+
+/// Process the `<head>` section by adding configured elements
 fn process_head_in_html(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     config: &'static SiteConfig,
 ) -> Result<()> {
-    let title = config.base.title.as_str();
-    let description = config.base.description.as_str();
+    let head = &config.build.head;
+    let base_path = &config.build.base_path;
 
-    if !title.is_empty() {
-        writer.write_event(Event::Start(BytesStart::new("title")))?;
-        writer.write_event(Event::Text(BytesText::new(title)))?;
-        writer.write_event(Event::End(BytesEnd::new("title")))?;
+    // Favicon
+    if let Some(icon) = &head.icon {
+        let href = compute_asset_href(icon, base_path)?;
+        let mime_type = get_icon_mime_type(icon);
+        write_empty_elem(writer, "link", &[
+            ("rel", "shortcut icon"),
+            ("href", &href),
+            ("type", mime_type),
+        ])?;
     }
 
-    if !description.is_empty() {
-        let mut elem = BytesStart::new("meta");
-        elem.push_attribute(("name", "description"));
-        elem.push_attribute(("content", description));
-        writer.write_event(Event::Start(elem))?;
-        writer.write_event(Event::End(BytesEnd::new("meta")))?;
+    // Stylesheets from head config
+    for style in &head.styles {
+        let href = compute_asset_href(style, base_path)?;
+        write_empty_elem(writer, "link", &[("href", &href), ("rel", "stylesheet")])?;
     }
 
+    // Tailwind stylesheet
     if config.build.tailwind.enable
         && let Some(input) = &config.build.tailwind.input
     {
         let href = compute_stylesheet_href(input, config)?;
-        let mut elem = BytesStart::new("link");
-        elem.push_attribute(("rel", "stylesheet"));
-        elem.push_attribute(("href", href.as_str()));
-        writer.write_event(Event::Start(elem))?;
+        write_empty_elem(writer, "link", &[("rel", "stylesheet"), ("href", &href)])?;
+    }
+
+    // Scripts from head config
+    for script in &head.scripts {
+        let src = compute_asset_href(script.path(), base_path)?;
+        write_script_elem(writer, &src, script.is_defer(), script.is_async())?;
+    }
+
+    // Raw HTML elements
+    for raw in &head.elements {
+        writer.get_mut().write_all(raw.as_bytes())?;
     }
 
     writer.write_event(Event::End(BytesEnd::new("head")))?;
     Ok(())
+}
+
+/// Write a self-closing element with attributes
+fn write_empty_elem(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    tag: &str,
+    attrs: &[(&str, &str)],
+) -> Result<()> {
+    let mut elem = BytesStart::new(tag);
+    for (key, value) in attrs {
+        elem.push_attribute((*key, *value));
+    }
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+/// Write a script element with optional defer/async attributes
+fn write_script_elem(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    src: &str,
+    defer: bool,
+    async_attr: bool,
+) -> Result<()> {
+    let mut elem = BytesStart::new("script");
+    elem.push_attribute(("src", src));
+    if defer {
+        elem.push_attribute(("defer", ""));
+    }
+    if async_attr {
+        elem.push_attribute(("async", ""));
+    }
+    writer.write_event(Event::Start(elem))?;
+    writer.write_event(Event::Text(BytesText::new(" ")))?;
+    writer.write_event(Event::End(BytesEnd::new("script")))?;
+    Ok(())
+}
+
+/// Compute href for an asset path relative to base_path
+fn compute_asset_href(asset_path: &Path, base_path: &Path) -> Result<String> {
+    // Strip the leading "./" or "assets/" prefix if present to get relative path within assets
+    let relative = asset_path
+        .strip_prefix("./")
+        .unwrap_or(asset_path);
+    let relative = relative
+        .strip_prefix("assets/")
+        .unwrap_or(relative);
+    
+    let path = PathBuf::from("/").join(base_path).join(relative);
+    Ok(path.to_string_lossy().into_owned())
 }
 
 fn compute_stylesheet_href(input: &Path, config: &'static SiteConfig) -> Result<String> {
