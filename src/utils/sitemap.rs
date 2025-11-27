@@ -16,7 +16,6 @@ use rayon::prelude::*;
 use std::{
     fs,
     io::Cursor,
-    path::Path,
 };
 
 /// Build sitemap.xml if enabled in config
@@ -52,7 +51,7 @@ impl Sitemap {
         let urls: Vec<SitemapUrl> = content_files
             .par_iter()
             .filter_map(|path| {
-                get_url_from_content_path(path, config).ok()
+                get_guid_from_content_output_path(path, config).ok()
             })
             .map(|loc| SitemapUrl { loc })
             .collect();
@@ -96,17 +95,14 @@ impl Sitemap {
     pub fn write_to_file(self, config: &'static SiteConfig) -> Result<()> {
         let xml = self.to_xml()?;
         let sitemap_path = config.build.sitemap.path.as_path();
-        fs::create_dir_all(sitemap_path.parent().unwrap())?;
+        if let Some(parent) = sitemap_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(sitemap_path, xml)?;
 
         log!(true; "sitemap"; "sitemap written successfully to {}", sitemap_path.display());
         Ok(())
     }
-}
-
-/// Get URL from content path (reuses logic from RSS module)
-fn get_url_from_content_path(content_path: &Path, config: &'static SiteConfig) -> Result<String> {
-    get_guid_from_content_output_path(content_path, config)
 }
 
 #[cfg(test)]
