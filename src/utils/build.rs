@@ -671,6 +671,23 @@ fn process_head_in_html(
     let head = &config.build.head;
     let base_path = &config.build.base_path;
 
+    // Title from [base.title]
+    let title = config.base.title.as_str();
+    if !title.is_empty() {
+        writer.write_event(Event::Start(BytesStart::new("title")))?;
+        writer.write_event(Event::Text(BytesText::new(title)))?;
+        writer.write_event(Event::End(BytesEnd::new("title")))?;
+    }
+
+    // Description from [base.description]
+    let description = config.base.description.as_str();
+    if !description.is_empty() {
+        let mut elem = BytesStart::new("meta");
+        elem.push_attribute(("name", "description"));
+        elem.push_attribute(("content", description));
+        writer.write_event(Event::Empty(elem))?;
+    }
+
     // Favicon
     if let Some(icon) = &head.icon {
         let href = compute_asset_href(icon, base_path)?;
