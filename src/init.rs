@@ -34,38 +34,37 @@ struct SiteInfo {
     url: Option<String>,
 }
 
+/// Validator for required fields that cannot be empty
+fn required_validator(input: &str) -> Result<Validation, inquire::CustomUserError> {
+    if input.trim().is_empty() {
+        Ok(Validation::Invalid("This field cannot be empty".into()))
+    } else {
+        Ok(Validation::Valid)
+    }
+}
+
 /// Run interactive prompts to collect site information
 fn prompt_site_info() -> Result<SiteInfo> {
+    let defaults = SiteConfig::default();
+
     let title = Text::new("Site title:")
         .with_help_message("The title of your site")
-        .with_validator(|input: &str| {
-            if input.trim().is_empty() {
-                Ok(Validation::Invalid("Title cannot be empty".into()))
-            } else {
-                Ok(Validation::Valid)
-            }
-        })
+        .with_validator(required_validator)
         .prompt()?;
 
     let description = Text::new("Site description:")
         .with_help_message("A brief description of your site")
-        .with_validator(|input: &str| {
-            if input.trim().is_empty() {
-                Ok(Validation::Invalid("Description cannot be empty".into()))
-            } else {
-                Ok(Validation::Valid)
-            }
-        })
+        .with_validator(required_validator)
         .prompt()?;
 
     let author = Text::new("Author name:")
         .with_help_message("Your name")
-        .with_default(&SiteConfig::default().base.author)
+        .with_default(&defaults.base.author)
         .prompt()?;
 
     let email = Text::new("Author email:")
         .with_help_message("Your email address")
-        .with_default(&SiteConfig::default().base.email)
+        .with_default(&defaults.base.email)
         .prompt()?;
 
     let url = Text::new("Base URL (optional):")
