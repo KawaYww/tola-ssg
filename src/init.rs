@@ -50,12 +50,16 @@ fn prompt_site_info() -> Result<SiteInfo> {
     let title = Text::new("Site title:")
         .with_help_message("The title of your site")
         .with_validator(required_validator)
-        .prompt()?;
+        .prompt()?
+        .trim()
+        .to_string();
 
     let description = Text::new("Site description:")
         .with_help_message("A brief description of your site")
         .with_validator(required_validator)
-        .prompt()?;
+        .prompt()?
+        .trim()
+        .to_string();
 
     let author = Text::new("Author name:")
         .with_help_message("Your name")
@@ -86,7 +90,7 @@ fn prompt_site_info() -> Result<SiteInfo> {
         description,
         author,
         email,
-        url: if url.is_empty() { None } else { Some(url) },
+        url: if url.trim().is_empty() { None } else { Some(url.trim().to_string()) },
     })
 }
 
@@ -98,7 +102,7 @@ pub fn new_site(config: &'static SiteConfig) -> Result<()> {
 
     let repo = git::create_repo(root)?;
     init_site_structure(root)?;
-    init_config_with_info(root, &site_info)?;
+    init_config_with_info(root, site_info)?;
     init_ignored_files(root, &[config.build.output.as_path(), Path::new("/assets/images/")])?;
     git::commit_all(&repo, "initial commit")?;
 
@@ -106,13 +110,13 @@ pub fn new_site(config: &'static SiteConfig) -> Result<()> {
 }
 
 /// Write configuration file with user-provided information
-fn init_config_with_info(root: &Path, info: &SiteInfo) -> Result<()> {
+fn init_config_with_info(root: &Path, info: SiteInfo) -> Result<()> {
     let mut site_config = SiteConfig::default();
-    site_config.base.title = info.title.clone();
-    site_config.base.description = info.description.clone();
-    site_config.base.author = info.author.clone();
-    site_config.base.email = info.email.clone();
-    site_config.base.url = info.url.clone();
+    site_config.base.title = info.title;
+    site_config.base.description = info.description;
+    site_config.base.author = info.author;
+    site_config.base.email = info.email;
+    site_config.base.url = info.url;
 
     let content = toml::to_string_pretty(&site_config)?;
     fs::write(root.join(CONFIG_FILE), content)?;
