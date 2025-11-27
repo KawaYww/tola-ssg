@@ -1,3 +1,7 @@
+//! URL slugification utilities.
+//!
+//! Converts paths and fragments to URL-safe formats.
+
 use crate::config::{SiteConfig, SlugMode};
 use std::path::{Path, PathBuf};
 

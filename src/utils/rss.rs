@@ -1,3 +1,7 @@
+//! RSS feed generation.
+//!
+//! Parses post metadata and generates RSS/Atom feeds.
+
 use crate::{
     config::SiteConfig,
     log, run_command,

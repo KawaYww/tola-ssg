@@ -1,3 +1,7 @@
+//! Logging utilities with colored output.
+//!
+//! Provides a log macro and functions for formatted terminal output.
+
 use colored::{ColoredString, Colorize};
 use crossterm::{
     execute,

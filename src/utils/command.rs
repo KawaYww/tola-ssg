@@ -1,3 +1,8 @@
+//! External command execution utilities.
+//!
+//! Provides macros and functions for running shell commands with proper
+//! output handling and error reporting.
+
 use crate::log;
 use anyhow::Result;
 use std::{
@@ -6,6 +11,7 @@ use std::{
     process::{ChildStdin, Command, Output, Stdio},
 };
 
+/// Run an external command with arguments
 #[macro_export]
 macro_rules! run_command {
     ($command:expr; $($arg:expr),*) => {{
@@ -28,6 +34,7 @@ macro_rules! run_command {
     }};
 }
 
+/// Run an external command and return a handle to its stdin
 #[macro_export]
 macro_rules! run_command_with_stdin {
     ($command:expr; $($arg:expr),*) => {{
@@ -50,88 +57,90 @@ macro_rules! run_command_with_stdin {
     }};
 }
 
-pub fn into_arg<S>(arg: S) -> OsString
-where
-    S: Into<OsString>,
-{
+/// Convert any compatible type to OsString
+pub fn into_arg<S: Into<OsString>>(arg: S) -> OsString {
     arg.into()
 }
 
+/// Execute a command and capture its output
 pub fn run_command(root: Option<&Path>, command: &[OsString], args: &[OsString]) -> Result<Output> {
-    let command: Vec<OsString> = command.iter().map(into_arg).collect();
-    let args: Vec<OsString> = [&command[1..], args].concat();
-    let command_name = command[0].to_str().unwrap();
+    let full_args: Vec<_> = [&command[1..], args].concat();
+    let cmd_name = command[0].to_str().unwrap();
 
-    let mut command = Command::new(command_name);
-    let command = if let Some(root) = root {
-        command.args(args).current_dir(root)
-    } else {
-        command.args(args)
-    };
+    let mut cmd = Command::new(cmd_name);
+    cmd.args(&full_args);
+    if let Some(root) = root {
+        cmd.current_dir(root);
+    }
 
-    let output = command.output()?;
-
-    log_for_command(command_name, &output)?;
+    let output = cmd.output()?;
+    log_command_output(cmd_name, &output)?;
 
     Ok(output)
 }
 
+/// Execute a command and return a handle to write to its stdin
 pub fn run_command_with_stdin(
     root: Option<&Path>,
     command: &[OsString],
     args: &[OsString],
 ) -> Result<ChildStdin> {
-    let command: Vec<OsString> = command.iter().map(into_arg).collect();
-    let args: Vec<OsString> = [&command[1..], args].concat();
-    let command_name = command[0].to_str().unwrap();
+    let full_args: Vec<_> = [&command[1..], args].concat();
+    let cmd_name = command[0].to_str().unwrap();
 
-    let mut command = Command::new(command_name);
-    let command = if let Some(root) = root {
-        command.args(args).current_dir(root)
-    } else {
-        command.args(args)
-    };
-
-    let mut output = command
+    let mut cmd = Command::new(cmd_name);
+    cmd.args(&full_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let stdin = output.stdin.take().expect("handle present");
+        .stderr(Stdio::null());
 
-    Ok(stdin)
+    if let Some(root) = root {
+        cmd.current_dir(root);
+    }
+
+    let mut child = cmd.spawn()?;
+    Ok(child.stdin.take().expect("stdin handle present"))
 }
 
-#[rustfmt::skip]
-pub fn log_for_command(name: &str, output: &Output) -> Result<()> {
-    let (stdout, stderr) = (str::from_utf8(&output.stdout)?.trim(), str::from_utf8(&output.stderr)?.trim());
+/// Prefixes to ignore in stdout
+const IGNORE_STDOUT: &[&str] = &["<!DOCTYPE html>", r#"{"#];
 
-    if !output.status.success() {
-        let stderr = stderr.trim_start_matches("warning: html export is under active development and incomplete
+/// Prefixes to ignore in stderr
+const IGNORE_STDERR: &[&str] = &[
+    "warning: html export is under active development and incomplete",
+    "warning: elem was ignored during paged export",
+    "≈ tailwindcss v",
+];
+
+/// Typst HTML export warning to strip from error output
+const TYPST_HTML_WARNING: &str = "warning: html export is under active development and incomplete
  = hint: its behaviour may change at any time
  = hint: do not rely on this feature for production use cases
- = hint: see https://github.com/typst/typst/issues/5512 for more information\n");
-        eprintln!("{stderr}");
+ = hint: see https://github.com/typst/typst/issues/5512 for more information\n";
+
+/// Log command output, filtering known noise
+fn log_command_output(name: &str, output: &Output) -> Result<()> {
+    let stdout = std::str::from_utf8(&output.stdout)?.trim();
+    let stderr = std::str::from_utf8(&output.stderr)?.trim();
+
+    if !output.status.success() {
+        let cleaned_stderr = stderr.trim_start_matches(TYPST_HTML_WARNING);
+        eprintln!("{cleaned_stderr}");
         anyhow::bail!("Command `{name}` failed");
     }
 
-    // Configurable ignore prefixes
-    let ignore_stdout = [
-        "<!DOCTYPE html>",
-        "{\"",
-    ];
-    let ignore_stderr = [
-        "warning: html export is under active development and incomplete",
-        "warning: elem was ignored during paged export",
-        "≈ tailwindcss v",
-    ];
-
-    if !ignore_stdout.iter().any(|s| stdout.starts_with(s)) {
-        stdout.lines().filter(|s| !s.trim().is_empty()).for_each(|s| log!(name; "{s}"));
+    // Log stdout unless it matches ignored prefixes
+    if !IGNORE_STDOUT.iter().any(|s| stdout.starts_with(s)) {
+        for line in stdout.lines().filter(|s| !s.trim().is_empty()) {
+            log!(name; "{line}");
+        }
     }
 
-    if !ignore_stderr.iter().any(|s| stderr.starts_with(s)) {
-        stderr.lines().filter(|s| !s.trim().is_empty()).for_each(|s| log!(name; "{s}"));
+    // Log stderr unless it matches ignored prefixes
+    if !IGNORE_STDERR.iter().any(|s| stderr.starts_with(s)) {
+        for line in stderr.lines().filter(|s| !s.trim().is_empty()) {
+            log!(name; "{line}");
+        }
     }
 
     Ok(())

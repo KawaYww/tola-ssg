@@ -111,10 +111,10 @@ async fn handle_path(uri: Uri, base_path: PathBuf) -> impl IntoResponse {
     let local_path = base_path.join(&request_path);
 
     // Try to read the file directly
-    if local_path.is_file() {
-        if let Ok(content) = fs::read_to_string(&local_path) {
-            return Html(content).into_response();
-        }
+    if local_path.is_file()
+        && let Ok(content) = fs::read_to_string(&local_path)
+    {
+        return Html(content).into_response();
     }
 
     // If it's a directory, try to serve index.html or generate listing

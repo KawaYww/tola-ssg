@@ -1,3 +1,7 @@
+//! Content and asset processing.
+//!
+//! Handles compilation of Typst files to HTML and asset copying/optimization.
+
 use crate::utils::watch::wait_until_stable;
 use crate::{
     config::{ExtractSvgType, SiteConfig},
@@ -523,16 +527,19 @@ fn compress_svg_with_magick(svg_path: &Path, svg_data: &[u8], scale: f32) -> Res
 }
 
 fn compress_svg_with_ffmpeg(svg_path: &Path, svg_data: &[u8], _scale: f32) -> Result<()> {
-    #[rustfmt::skip]
     let mut child_stdin = run_command_with_stdin!(
         ["ffmpeg"];
-        "-f", "svg_pipe", "-frame_size", "1000000000", "-i", "pipe:",
+        "-f", "svg_pipe",
+        "-frame_size", "1000000000",
+        "-i", "pipe:",
         "-filter_complex", "[0:v]split[color][alpha];[alpha]alphaextract[alpha];[color]format=yuv420p[color]",
         "-map", "[color]",
-        "-c:v:0", "libsvtav1", "-pix_fmt", "yuv420p",
+        "-c:v:0", "libsvtav1",
+        "-pix_fmt", "yuv420p",
         "-svtav1-params", "preset=4:still-picture=1",
         "-map", "[alpha]",
-        "-c:v:1", "libaom-av1", "-pix_fmt", "gray",
+        "-c:v:1", "libaom-av1",
+        "-pix_fmt", "gray",
         "-still-picture", "1",
         "-strict", "experimental",
         "-c:v", "libaom-av1",
@@ -660,14 +667,14 @@ fn process_head_in_html(
         writer.write_event(Event::End(BytesEnd::new("meta")))?;
     }
 
-    if config.build.tailwind.enable {
-        if let Some(input) = &config.build.tailwind.input {
-            let href = compute_stylesheet_href(input, config)?;
-            let mut elem = BytesStart::new("link");
-            elem.push_attribute(("rel", "stylesheet"));
-            elem.push_attribute(("href", href.as_str()));
-            writer.write_event(Event::Start(elem))?;
-        }
+    if config.build.tailwind.enable
+        && let Some(input) = &config.build.tailwind.input
+    {
+        let href = compute_stylesheet_href(input, config)?;
+        let mut elem = BytesStart::new("link");
+        elem.push_attribute(("rel", "stylesheet"));
+        elem.push_attribute(("href", href.as_str()));
+        writer.write_event(Event::Start(elem))?;
     }
 
     writer.write_event(Event::End(BytesEnd::new("head")))?;

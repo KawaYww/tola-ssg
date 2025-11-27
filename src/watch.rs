@@ -53,10 +53,10 @@ pub fn watch_for_changes_blocking(
                         let now = Instant::now();
 
                         // Check if this path was recently processed
-                        if let Some(&last_time) = last_events.get(path_str.as_ref()) {
-                            if now.duration_since(last_time) < debounce_duration {
-                                return false;
-                            }
+                        if let Some(&last_time) = last_events.get(path_str.as_ref())
+                            && now.duration_since(last_time) < debounce_duration
+                        {
+                            return false;
                         }
 
                         last_events.insert(path_str.to_string(), now);

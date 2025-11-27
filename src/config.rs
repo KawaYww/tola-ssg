@@ -1,3 +1,7 @@
+//! Site configuration management.
+//!
+//! Handles loading, parsing, and validating the `tola.toml` configuration file.
+
 use crate::cli::{Cli, Commands};
 use anyhow::{Context, Result, bail};
 use educe::Educe;
@@ -9,26 +13,29 @@ use std::{
 };
 use thiserror::Error;
 
+/// Configuration-related errors
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("IO error when reading `{0}`")]
     Io(PathBuf, #[source] std::io::Error),
 
-    #[error("config file parsing error")]
+    #[error("Config file parsing error")]
     Toml(#[from] toml::de::Error),
 
-    #[error("config file validation error: {0}")]
+    #[error("Config validation error: {0}")]
     Validation(String),
 }
 
-// for default value in serde
+/// Default values for serde deserialization
 pub mod config_defaults {
-    #[rustfmt::skip]
-    pub fn r#true() -> bool { true }
+    pub fn r#true() -> bool {
+        true
+    }
 
     #[allow(unused)]
-    #[rustfmt::skip]
-    pub fn r#false() -> bool { false }
+    pub fn r#false() -> bool {
+        false
+    }
 
     pub mod base {
         pub fn url() -> Option<String> {
@@ -179,63 +186,68 @@ pub mod config_defaults {
     }
 }
 
+/// URL slug generation mode
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SlugMode {
+    /// Always slugify
     On,
-
+    /// Only slugify non-ASCII characters (default)
     #[default]
     Safe,
-
+    /// No slugification
     No,
 }
 
+/// SVG extraction method for embedded images
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExtractSvgType {
+    /// Use built-in Rust libraries
     Builtin,
-
+    /// Use ImageMagick
     Magick,
-
+    /// Use FFmpeg
     Ffmpeg,
-
+    /// Keep as SVG without conversion
     JustSvg,
-
+    /// Embed directly in HTML (default)
     #[default]
     Embedded,
 }
 
-// `[base]` in toml
+/// `[base]` section in tola.toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct BaseConfig {
-    // title
+    /// Site title
     pub title: String,
 
-    // author, e.g.: "Bob"
+    /// Author name, e.g.: "Bob"
     #[serde(default = "config_defaults::base::author")]
     #[educe(Default = config_defaults::base::author())]
     pub author: String,
 
-    // email, e.g.: "bob@xxxxx.com"
+    /// Author email, e.g.: "bob@example.com"
     #[serde(default = "config_defaults::base::email")]
     #[educe(Default = config_defaults::base::email())]
     pub email: String,
 
-    // description
+    /// Site description
     pub description: String,
 
-    // e.g., "https://kawayww.com", for generating `rss.xml`/`atom.xl`, `sitemap.xml`
+    /// Base URL for RSS/sitemap generation, e.g.: "https://example.com"
     #[serde(default = "config_defaults::base::url")]
     #[educe(Default = config_defaults::base::url())]
     pub url: Option<String>,
 
-    // e.g., "zh-Hans", "zh_CN", "en_US"
+    /// Language code, e.g.: "zh-Hans", "en_US"
     #[serde(default = "config_defaults::build::language")]
     #[educe(Default = config_defaults::build::language())]
     pub language: String,
 
+    /// Copyright notice
     #[serde(default)]
     pub copyright: String,
 }
@@ -257,325 +269,331 @@ fn validate_base_config() {
     assert_eq!(config.base.title, "KawaYww");
 }
 
-// `[build]` in toml
+/// `[build]` section in tola.toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct BuildConfig {
-    // root directory path
+    /// Root directory path
     #[serde(default = "config_defaults::build::root")]
     #[educe(Default = config_defaults::build::root())]
     pub root: Option<PathBuf>,
 
-    // e.g., "myblog"
+    /// Base path for URLs, e.g.: "myblog"
     #[serde(default = "config_defaults::build::base_path")]
     #[educe(Default = config_defaults::build::base_path())]
     pub base_path: PathBuf,
 
-    // content directory path related to `root`
+    /// Content directory path (relative to root)
     #[serde(default = "config_defaults::build::content")]
     #[educe(Default = config_defaults::build::content())]
     pub content: PathBuf,
 
-    // output directory path related to `root`
+    /// Output directory path (relative to root)
     #[serde(default = "config_defaults::build::output")]
     #[educe(Default = config_defaults::build::output())]
     pub output: PathBuf,
 
-    // assets directory path related to `root`
+    /// Assets directory path (relative to root)
     #[serde(default = "config_defaults::build::assets")]
     #[educe(Default = config_defaults::build::assets())]
     pub assets: PathBuf,
 
-    // minify the html content
+    /// Minify HTML output
     #[serde(default = "config_defaults::r#true")]
     #[educe(Default = true)]
     pub minify: bool,
 
-    // Whether to clear output dir before generating site
+    /// Clear output directory before building
     #[serde(default = "config_defaults::r#false")]
     #[educe(Default = false)]
     pub clear: bool,
 
-    // rss file path related to `root`
+    /// RSS feed configuration
     #[serde(default)]
     pub rss: RssConfig,
 
-    // should slug or not
+    /// URL slugification settings
     #[serde(default)]
     pub slug: SlugConfig,
 
-    // typst config
+    /// Typst compiler configuration
     #[serde(default)]
     pub typst: TypstConfig,
 
-    // tailwind config
+    /// Tailwind CSS configuration
     #[serde(default)]
     pub tailwind: TailwindConfig,
 }
 
-// `[build.rss]` in toml
+/// `[build.rss]` section
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct RssConfig {
-    // slugify the path or not
+    /// Enable RSS feed generation
     #[serde(default = "config_defaults::r#false")]
     #[educe(Default = config_defaults::r#false())]
     pub enable: bool,
 
-    // slugify the fragment or not
+    /// Output path for RSS feed file
     #[serde(default = "config_defaults::build::rss::path")]
     #[educe(Default = config_defaults::build::rss::path())]
     pub path: PathBuf,
 }
 
-// `[build.typst]` in toml
+/// `[build.slug]` section
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct SlugConfig {
-    // slugify the path or not
+    /// Slugify URL paths
     #[serde(default = "config_defaults::build::slug::default")]
     #[educe(Default = config_defaults::build::slug::default())]
     pub path: SlugMode,
 
-    // slugify the fragment or not
+    /// Slugify URL fragments (anchors)
     #[serde(default = "config_defaults::build::slug::on")]
     #[educe(Default = config_defaults::build::slug::on())]
     pub fragment: SlugMode,
 }
 
-// `[build.typst]` in toml
+/// `[build.typst]` section
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct TypstConfig {
-    // The name of typst command
+    /// Typst command and arguments
     #[serde(default = "config_defaults::build::typst::command")]
     #[educe(Default = config_defaults::build::typst::command())]
     pub command: Vec<String>,
 
-    // `[build.typst.svg]` part
+    /// SVG processing options
     #[serde(default)]
     pub svg: TypstSvgConfig,
 }
 
-// `[build.typst.svg]` in toml
+/// `[build.typst.svg]` section
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct TypstSvgConfig {
-    // whether to extract a embedded svg into separate file, for smaller size && faster loading
+    /// Method for extracting embedded SVG images
     #[serde(default = "config_defaults::build::typst::svg::extract_type")]
     #[educe(Default = config_defaults::build::typst::svg::extract_type())]
     pub extract_type: ExtractSvgType,
 
-    // The max size for inlining svg image
+    /// Max size for inline SVG (e.g.: "20KB", "1MB")
     #[serde(default = "config_defaults::build::typst::svg::inline_max_size")]
     #[educe(Default = config_defaults::build::typst::svg::inline_max_size())]
     pub inline_max_size: String,
 
-    // The max size for inlining svg image
+    /// DPI for SVG rendering
     #[serde(default = "config_defaults::build::typst::svg::dpi")]
     #[educe(Default = config_defaults::build::typst::svg::dpi())]
     pub dpi: f32,
 }
 
-// `[build.tailwind]` in toml
+/// `[build.tailwind]` section
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct TailwindConfig {
-    // whether to enable tailwindcss support
+    /// Enable Tailwind CSS processing
     #[serde(default = "config_defaults::r#false")]
     #[educe(Default = false)]
     pub enable: bool,
 
-    // whether to enable tailwindcss support
+    /// Input CSS file path
     #[serde(default = "config_defaults::build::tailwind::input")]
     #[educe(Default = config_defaults::build::tailwind::input())]
     pub input: Option<PathBuf>,
 
-    // The name of tailwind command
+    /// Tailwind command and arguments
     #[serde(default = "config_defaults::build::tailwind::command")]
     #[educe(Default = config_defaults::build::tailwind::command())]
     pub command: Vec<String>,
 }
 
-// `[serve]` in toml
+/// `[serve]` section in tola.toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct ServeConfig {
-    // Interface to bind on
+    /// Network interface to bind (e.g.: "127.0.0.1", "0.0.0.0")
     #[serde(default = "config_defaults::serve::interface")]
     #[educe(Default = config_defaults::serve::interface())]
     pub interface: String,
 
-    // The port you should provide
+    /// Port number to listen on
     #[serde(default = "config_defaults::serve::port")]
     #[educe(Default = config_defaults::serve::port())]
     pub port: u16,
 
-    // enable watch
+    /// Enable file watching for live reload
     #[serde(default = "config_defaults::r#true")]
     #[educe(Default = true)]
     pub watch: bool,
 }
 
-// `[deploy]` in toml
+/// `[deploy]` section in tola.toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct DeployConfig {
-    // The provider to use for deployment
+    /// Deployment provider (e.g.: "github")
     #[serde(default = "config_defaults::deploy::provider")]
     #[educe(Default = config_defaults::deploy::provider())]
     pub provider: String,
 
-    // The provider to use for deployment
+    /// Force push to remote
     #[serde(default = "config_defaults::r#false")]
     #[educe(Default = config_defaults::r#false())]
     pub force: bool,
 
-    // The git provider for deployment
+    /// GitHub Pages configuration
     #[serde(rename = "github", default)]
     pub github_provider: GithubProvider,
 
-    // The cloudflare provider for deployment
+    /// Cloudflare Pages configuration
     #[serde(rename = "cloudflare", default)]
     pub cloudflare_provider: CloudflareProvider,
 
-    // The vercal provider for deployment
+    /// Vercel configuration
     #[serde(rename = "vercal", default)]
     pub vercal_provider: VercalProvider,
 }
 
-// `[deploy.git]` in toml
+/// `[deploy.github]` section
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct GithubProvider {
-    // The remote_url of generated site repo
+    /// Repository URL
     #[serde(default = "config_defaults::deploy::github::url")]
     #[educe(Default = config_defaults::deploy::github::url())]
     pub url: String,
 
-    // The branch of generated site repo
+    /// Branch to push to
     #[serde(default = "config_defaults::deploy::github::branch")]
     #[educe(Default = config_defaults::deploy::github::branch())]
     pub branch: String,
 
-    // Warning: Be carefully if you enable this option
-    // Warning: Not pushing your token into public repo
-    // The provider to use for deployment
+    /// Path to file containing GitHub token
+    /// WARNING: Never commit this token to a public repository!
     #[serde(default = "config_defaults::deploy::github::token_path")]
     #[educe(Default = config_defaults::deploy::github::token_path())]
     pub token_path: Option<PathBuf>,
 }
 
-// `[deploy.cloudflare]` in toml
+/// `[deploy.cloudflare]` section (placeholder)
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct CloudflareProvider {
-    // The provider to use for deployment
+    /// Provider identifier
     #[serde(default = "config_defaults::deploy::provider")]
     #[educe(Default = config_defaults::deploy::provider())]
     pub provider: String,
 }
 
-// `[deploy.vercal]` in toml
+/// `[deploy.vercal]` section (placeholder)
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct VercalProvider {
-    // The provider to use for deployment
+    /// Provider identifier
     #[serde(default = "config_defaults::deploy::provider")]
     #[educe(Default = config_defaults::deploy::provider())]
     pub provider: String,
 }
 
-// top-level toml
+/// Root configuration structure representing tola.toml
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Default)]
 #[serde(deny_unknown_fields)]
 pub struct SiteConfig {
+    /// CLI arguments reference
     #[serde(skip)]
     pub cli: Option<&'static Cli>,
 
+    /// Basic site information
     #[serde(default)]
     pub base: BaseConfig,
 
+    /// Build settings
     #[serde(default)]
     pub build: BuildConfig,
 
+    /// Development server settings
     #[serde(default)]
     pub serve: ServeConfig,
 
+    /// Deployment settings
     #[serde(default)]
     pub deploy: DeployConfig,
 
+    /// User-defined extra fields
     #[serde(default)]
     pub extra: HashMap<String, toml::Value>,
 }
 
 impl SiteConfig {
+    /// Parse configuration from TOML string
     pub fn from_str(content: &str) -> Result<Self> {
         let config: SiteConfig = toml::from_str(content)?;
         Ok(config)
     }
 
+    /// Load configuration from file path
     pub fn from_path(path: &Path) -> Result<Self> {
         let content =
             fs::read_to_string(path).map_err(|err| ConfigError::Io(path.to_path_buf(), err))?;
         Self::from_str(&content)
     }
 
+    /// Get the root directory path
     pub fn get_root(&self) -> &Path {
         self.build.root.as_deref().unwrap_or(Path::new("./"))
     }
 
+    /// Set the root directory path
     pub fn set_root(&mut self, path: &Path) {
         self.build.root = Some(path.to_path_buf())
     }
 
+    /// Get CLI arguments reference
     pub fn get_cli(&self) -> &'static Cli {
         self.cli.unwrap()
     }
 
+    /// Parse inline_max_size string (e.g., "20KB") to bytes
     pub fn get_inline_max_size(&self) -> usize {
-        let inline_max_size = self.build.typst.svg.inline_max_size.as_str();
-        let per_size = if inline_max_size.ends_with("MB") {
+        let size_str = &self.build.typst.svg.inline_max_size;
+        let multiplier = if size_str.ends_with("MB") {
             1024 * 1024
-        } else if inline_max_size.ends_with("KB") {
+        } else if size_str.ends_with("KB") {
             1024
-        } else if inline_max_size.ends_with("B") {
-            1
         } else {
-            unreachable!()
+            1
         };
-        let inline_max_size = inline_max_size
+        let value: usize = size_str
             .trim_end_matches(|c: char| c.is_ascii_uppercase())
-            .parse::<usize>()
-            .unwrap();
-        per_size * inline_max_size
+            .parse()
+            .unwrap_or(0);
+        multiplier * value
     }
 
+    /// Get DPI scale factor (relative to 96 DPI)
     pub fn get_scale(&self) -> f32 {
-        self.build.typst.svg.dpi / 96.
+        self.build.typst.svg.dpi / 96.0
     }
 
-    #[rustfmt::skip]
+    /// Update configuration with CLI arguments
     pub fn update_with_cli(&mut self, cli: &'static Cli) {
         self.cli = Some(cli);
 
-        let root = if let Some(root) = &cli.root {
-            root.to_owned()
-        } else {
-            self.get_root().to_owned()
-        };
+        let root = cli.root.as_ref().cloned().unwrap_or_else(|| self.get_root().to_owned());
         self.set_root(&root);
         self.update_path_with_root(&root);
 
@@ -586,32 +604,33 @@ impl SiteConfig {
 
         match &cli.command {
             Commands::Init { name: Some(name) } => {
-                let root = if let Some(root) = &self.build.root {
-                    root.join(name)
-                } else {
-                    name.clone()
-                };
-                self.update_path_with_root(&root);
-            },
+                let new_root = self.build.root.as_ref().map_or_else(
+                    || name.clone(),
+                    |r| r.join(name),
+                );
+                self.update_path_with_root(&new_root);
+            }
             Commands::Serve { interface, port, watch } => {
                 Self::update_option(&mut self.serve.interface, interface.as_ref());
                 Self::update_option(&mut self.serve.port, port.as_ref());
-                Self::update_option(&mut self.serve.watch, watch.clone().as_ref());
+                Self::update_option(&mut self.serve.watch, watch.as_ref());
                 self.base.url = Some(format!("http://{}:{}", self.serve.interface, self.serve.port));
-            },
+            }
             Commands::Deploy { force } => {
-                Self::update_option(&mut self.deploy.force, force.clone().as_ref());
-            },
-            _ => ()
+                Self::update_option(&mut self.deploy.force, force.as_ref());
+            }
+            _ => {}
         }
     }
 
+    /// Update config option if CLI value is provided
     fn update_option<T: Clone>(config_option: &mut T, cli_option: Option<&T>) {
         if let Some(option) = cli_option {
-            *config_option = option.clone()
+            *config_option = option.clone();
         }
     }
 
+    /// Update all paths relative to root directory
     fn update_path_with_root(&mut self, root: &Path) {
         let cli = self.get_cli();
 
@@ -642,87 +661,84 @@ impl SiteConfig {
         }
     }
 
-    #[rustfmt::skip]
+    /// Validate configuration for the current command
     #[allow(unused)]
     pub fn validate(&self) -> Result<()> {
         let cli = self.get_cli();
 
-        if !self.get_root().join(cli.config.as_path()).exists() {
-            bail!("The config file didn't exist");
+        if !self.get_root().join(&cli.config).exists() {
+            bail!("Config file not found");
         }
 
-        #[allow(clippy::collapsible_if)]
-        if self.build.rss.enable {
-            if self.base.url.is_none() {
-                bail!("The [base.url] is required for generating RSS");
-            }
+        if self.build.rss.enable && self.base.url.is_none() {
+            bail!("[base.url] is required for RSS generation");
         }
 
-        Self::check_command_installed("[build.typst.command]", &self.build.typst.command);
+        Self::check_command_installed("[build.typst.command]", &self.build.typst.command)?;
 
-        let root = self.get_root();
-        let output = self.build.output.as_path();
-        let token_path = self.deploy.github_provider.token_path.as_ref();
-        let force = self.deploy.force;
-
-        if let Some(base_url) = self.base.url.as_ref() && !base_url.starts_with("http") {
+        if let Some(base_url) = &self.base.url
+            && !base_url.starts_with("http")
+        {
             bail!(ConfigError::Validation(
-                "[base.url] should start with `http://` or `https://`".into()
-            ))
+                "[base.url] must start with http:// or https://".into()
+            ));
         }
 
         if self.build.tailwind.enable {
-            Self::check_command_installed("[build.tailwind.command]", &self.build.tailwind.command);
+            Self::check_command_installed("[build.tailwind.command]", &self.build.tailwind.command)?;
 
             match &self.build.tailwind.input {
-                None => bail!("[build.tailwind.enable] = true, but you didn't specify [build.tailwind.input] for input file"),
-                Some(path) => {
-                    if !path.exists() { bail!(ConfigError::Validation(
-                        "[build.tailwind.input] not exists".into()
-                    ))}
-                    if !path.is_file() { bail!(ConfigError::Validation(
-                        "[build.tailwind.input] is not a file".into()
-                    ))}
+                None => bail!(
+                    "[build.tailwind.enable] = true requires [build.tailwind.input] to be set"
+                ),
+                Some(path) if !path.exists() => {
+                    bail!(ConfigError::Validation("[build.tailwind.input] not found".into()))
                 }
+                Some(path) if !path.is_file() => {
+                    bail!(ConfigError::Validation("[build.tailwind.input] is not a file".into()))
+                }
+                _ => {}
             }
         }
 
-        let is_valid_size = ["B", "KB", "MB"].iter().any(|s| self.build.typst.svg.inline_max_size.ends_with(s));
-        if !is_valid_size {bail!(ConfigError::Validation(
-            "The size must end with `B`, `KB`, `MB`".into()
-        ))}
+        let valid_size_suffixes = ["B", "KB", "MB"];
+        if !valid_size_suffixes.iter().any(|s| self.build.typst.svg.inline_max_size.ends_with(s)) {
+            bail!(ConfigError::Validation(
+                "[build.typst.svg.inline_max_size] must end with B, KB, or MB".into()
+            ));
+        }
 
-        match cli.command {
-            Commands::Init { .. } => {
-                if root.exists() { bail!("The path already exists") }
-            },
+        match &cli.command {
+            Commands::Init { .. } if self.get_root().exists() => {
+                bail!("Path already exists");
+            }
             Commands::Deploy { .. } => {
-                if let Some(path) =  token_path {
-                    if !path.exists() { bail!(ConfigError::Validation(
-                        "[deploy.github.token_path] not exists".into()
-                    ))}
-                    if !path.is_file() { bail!(ConfigError::Validation(
-                        "[deploy.github.token_path] is not a file".into()
-                    ))}
+                if let Some(path) = &self.deploy.github_provider.token_path {
+                    if !path.exists() {
+                        bail!(ConfigError::Validation("[deploy.github.token_path] not found".into()));
+                    }
+                    if !path.is_file() {
+                        bail!(ConfigError::Validation("[deploy.github.token_path] is not a file".into()));
+                    }
                 }
-            },
-            _ => ()
+            }
+            _ => {}
         }
 
         Ok(())
     }
 
-    fn check_command_installed(fields_in_config: &str, command: &[String]) -> Result<()> {
+    /// Check if a command is installed and available
+    fn check_command_installed(field: &str, command: &[String]) -> Result<()> {
         if command.is_empty() {
             bail!(ConfigError::Validation(format!(
-                "{fields_in_config} should have at least one field"
-            )))
+                "{field} must have at least one element"
+            )));
         }
 
-        let command = command[0].as_str();
-        which::which(command).with_context(|| {
-            format!("[check] `{command}` not found. Please install `{command}` first")
-        })?;
+        let cmd = &command[0];
+        which::which(cmd)
+            .with_context(|| format!("`{cmd}` not found. Please install it first."))?;
 
         Ok(())
     }

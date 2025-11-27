@@ -1,3 +1,7 @@
+//! File change processing for hot reload.
+//!
+//! Handles content and asset changes triggered by file watcher.
+
 use super::build::{process_asset, process_content};
 use crate::{config::SiteConfig, log, run_command};
 use anyhow::{Result, anyhow, bail};
