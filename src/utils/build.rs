@@ -702,7 +702,7 @@ fn process_head_in_html(
     // Stylesheets from head config
     for style in &head.styles {
         let href = compute_asset_href(style, base_path)?;
-        write_empty_elem(writer, "link", &[("href", &href), ("rel", "stylesheet")])?;
+        write_empty_elem(writer, "link", &[("rel", "stylesheet"), ("href", &href)])?;
     }
 
     // Tailwind stylesheet
@@ -820,5 +820,183 @@ fn is_external_link(link: &str) -> bool {
                 .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
         }
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_get_icon_mime_type_ico() {
+        assert_eq!(get_icon_mime_type(Path::new("favicon.ico")), "image/x-icon");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_png() {
+        assert_eq!(get_icon_mime_type(Path::new("icon.png")), "image/png");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_svg() {
+        assert_eq!(get_icon_mime_type(Path::new("logo.svg")), "image/svg+xml");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_avif() {
+        assert_eq!(get_icon_mime_type(Path::new("image.avif")), "image/avif");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_webp() {
+        assert_eq!(get_icon_mime_type(Path::new("photo.webp")), "image/webp");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_gif() {
+        assert_eq!(get_icon_mime_type(Path::new("animation.gif")), "image/gif");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_jpeg() {
+        assert_eq!(get_icon_mime_type(Path::new("photo.jpg")), "image/jpeg");
+        assert_eq!(get_icon_mime_type(Path::new("photo.jpeg")), "image/jpeg");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_unknown_defaults_to_ico() {
+        assert_eq!(get_icon_mime_type(Path::new("file.xyz")), "image/x-icon");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_no_extension_defaults_to_ico() {
+        assert_eq!(get_icon_mime_type(Path::new("favicon")), "image/x-icon");
+    }
+
+    #[test]
+    fn test_get_icon_mime_type_case_insensitive() {
+        assert_eq!(get_icon_mime_type(Path::new("icon.PNG")), "image/png");
+        assert_eq!(get_icon_mime_type(Path::new("logo.SVG")), "image/svg+xml");
+        assert_eq!(get_icon_mime_type(Path::new("photo.JPEG")), "image/jpeg");
+    }
+
+    #[test]
+    fn test_compute_asset_href_simple_path() {
+        let result = compute_asset_href(Path::new("images/icon.png"), Path::new("")).unwrap();
+        assert_eq!(result, "/images/icon.png");
+    }
+
+    #[test]
+    fn test_compute_asset_href_with_dot_prefix() {
+        let result = compute_asset_href(Path::new("./images/icon.png"), Path::new("")).unwrap();
+        assert_eq!(result, "/images/icon.png");
+    }
+
+    #[test]
+    fn test_compute_asset_href_with_assets_prefix() {
+        let result = compute_asset_href(Path::new("assets/images/icon.png"), Path::new("")).unwrap();
+        assert_eq!(result, "/images/icon.png");
+    }
+
+    #[test]
+    fn test_compute_asset_href_with_dot_and_assets_prefix() {
+        let result = compute_asset_href(Path::new("./assets/images/icon.png"), Path::new("")).unwrap();
+        assert_eq!(result, "/images/icon.png");
+    }
+
+    #[test]
+    fn test_compute_asset_href_with_base_path() {
+        let result = compute_asset_href(Path::new("images/icon.png"), Path::new("blog")).unwrap();
+        assert_eq!(result, "/blog/images/icon.png");
+    }
+
+    #[test]
+    fn test_compute_asset_href_full_path_with_base() {
+        let result = compute_asset_href(
+            Path::new("./assets/scripts/main.js"),
+            Path::new("mysite")
+        ).unwrap();
+        assert_eq!(result, "/mysite/scripts/main.js");
+    }
+
+    #[test]
+    fn test_write_empty_elem() {
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        write_empty_elem(&mut writer, "link", &[("rel", "stylesheet"), ("href", "/styles/main.css")]).unwrap();
+        let output = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        assert!(output.contains("link"));
+        assert!(output.contains("rel=\"stylesheet\""));
+        assert!(output.contains("href=\"/styles/main.css\""));
+    }
+
+    #[test]
+    fn test_write_empty_elem_no_attrs() {
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        write_empty_elem(&mut writer, "br", &[]).unwrap();
+        let output = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        assert!(output.contains("br"));
+    }
+
+    #[test]
+    fn test_write_script_elem_basic() {
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        write_script_elem(&mut writer, "/scripts/main.js", false, false).unwrap();
+        let output = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        assert!(output.contains("<script"));
+        assert!(output.contains("src=\"/scripts/main.js\""));
+        assert!(output.contains("</script>"));
+        assert!(!output.contains("defer"));
+        assert!(!output.contains("async"));
+    }
+
+    #[test]
+    fn test_write_script_elem_with_defer() {
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        write_script_elem(&mut writer, "/scripts/main.js", true, false).unwrap();
+        let output = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        assert!(output.contains("defer"));
+        assert!(!output.contains("async"));
+    }
+
+    #[test]
+    fn test_write_script_elem_with_async() {
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        write_script_elem(&mut writer, "/scripts/main.js", false, true).unwrap();
+        let output = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        assert!(!output.contains("defer"));
+        assert!(output.contains("async"));
+    }
+
+    #[test]
+    fn test_write_script_elem_with_both_defer_and_async() {
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        write_script_elem(&mut writer, "/scripts/main.js", true, true).unwrap();
+        let output = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        assert!(output.contains("defer"));
+        assert!(output.contains("async"));
+    }
+
+    #[test]
+    fn test_is_external_link_http() {
+        assert!(is_external_link("http://example.com"));
+        assert!(is_external_link("https://example.com/path"));
+    }
+
+    #[test]
+    fn test_is_external_link_mailto() {
+        assert!(is_external_link("mailto:user@example.com"));
+    }
+
+    #[test]
+    fn test_is_external_link_relative_path() {
+        assert!(!is_external_link("/path/to/page"));
+        assert!(!is_external_link("./relative/path"));
+        assert!(!is_external_link("../parent/path"));
+    }
+
+    #[test]
+    fn test_is_external_link_anchor() {
+        assert!(!is_external_link("#section"));
     }
 }
