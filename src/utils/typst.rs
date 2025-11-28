@@ -1,33 +1,40 @@
 //! Typst library integration for compiling Typst files to HTML.
 //!
-//! This module provides a `World` implementation and compilation utilities
+//! This module provides a [`World`] implementation and compilation utilities
 //! that replace the external typst CLI with direct library usage.
 //!
+//! # Architecture
+//!
+//! The module is organized into the following components:
+//! - [`TolaWorld`]: Implements typst's [`World`] trait for file resolution, fonts, and packages
+//! - [`FontManager`]: Handles font discovery from system and custom directories
+//! - [`compile_to_html`]: Main entry point for compiling Typst files to HTML
+//!
 //! # Font Discovery
-//! - Fonts are discovered from the system font directories and from the provided root directory.
-//! - Additional font paths can be specified via the `font_paths` argument to `compile_to_html`.
-//! - The font book is built from all discovered fonts at startup.
 //!
-//! # Feature Support vs. Typst CLI
-//! - Supports compiling Typst source files to HTML using the Typst library.
-//! - Standard library features are available.
-//! - Supports Typst packages from the official registry (e.g., `#import "@preview/package:version"`).
-//! - Only HTML output is supported; other output formats (PDF, PNG, etc.) are not implemented here.
+//! Fonts are discovered in the following order (higher priority first):
+//! 1. Custom font paths passed to [`compile_to_html`]
+//! 2. Project root directory (equivalent to `--font-path root` in typst CLI)
+//! 3. System fonts (platform-specific directories)
 //!
-//! # Known Limitations
-//! - Only local file system sources and official registry packages are supported.
-//! - Some CLI features (e.g., watch mode, incremental compilation) are not available.
+//! # Package Support
+//!
+//! Supports Typst packages from:
+//! - Official registry: `#import "@preview/package:version"`
+//! - Local packages: `#import "@local/package:version"` (from user data directory)
 //!
 //! # Error Handling
-//! - Compilation errors and warnings are collected and returned as part of the result.
-//! - Warnings are logged using the project's logging framework (except for known, ignorable warnings).
-//! - On failure, errors are returned as `anyhow::Error` with detailed messages.
+//!
+//! - Compilation errors are collected and returned with source locations
+//! - Warnings are logged using the project's logging framework
+//! - File access errors include path context for debugging
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{Datelike, Local, Utc};
 use parking_lot::Mutex;
 use typst::diag::{FileError, FileResult};
@@ -37,11 +44,27 @@ use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Feature, Library, LibraryExt, World};
 use typst_html::HtmlDocument;
-use typst_kit::download::{Downloader, Progress, DownloadState};
-use typst_kit::fonts::{FontSearcher, FontSlot, Fonts};
+use typst_kit::download::{DownloadState, Downloader, Progress};
+use typst_kit::fonts::{FontSearcher, FontSlot};
 use typst_kit::package::PackageStorage;
 
-/// A no-op progress reporter for package downloads.
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// User agent string for package downloads
+const USER_AGENT: &str = concat!("tola-ssg/", env!("CARGO_PKG_VERSION"));
+
+/// Warnings to suppress (these are expected and not actionable by users)
+const SUPPRESSED_WARNINGS: &[&str] = &["html export is under active development"];
+
+// ============================================================================
+// Progress Reporter
+// ============================================================================
+
+/// A silent progress reporter for package downloads.
+///
+/// In the future, this could be extended to show download progress in the terminal.
 struct SilentProgress;
 
 impl Progress for SilentProgress {
@@ -50,40 +73,200 @@ impl Progress for SilentProgress {
     fn print_finish(&mut self, _: &DownloadState) {}
 }
 
-/// A World implementation for compiling Typst files.
-pub struct TolaWorld {
-    /// The root directory for resolving paths.
-    root: PathBuf,
-    /// The main source file ID.
-    main: FileId,
-    /// Typst's standard library.
-    library: LazyHash<Library>,
-    /// Metadata about discovered fonts.
+// ============================================================================
+// Font Manager
+// ============================================================================
+
+/// Manages font discovery and loading.
+///
+/// Fonts are discovered from multiple sources:
+/// - System font directories (platform-specific)
+/// - Project root directory
+/// - Additional custom font paths
+#[derive(Debug)]
+struct FontManager {
+    /// Metadata about all discovered fonts
     book: LazyHash<FontBook>,
-    /// Font slots for lazy loading.
-    fonts: Vec<FontSlot>,
-    /// Package storage for downloading and caching packages.
-    package_storage: PackageStorage,
-    /// Cache of loaded source files.
+    /// Font slots for lazy loading
+    slots: Vec<FontSlot>,
+}
+
+impl FontManager {
+    /// Create a new font manager with fonts from the specified directories.
+    ///
+    /// # Arguments
+    /// * `root` - Project root directory (always included as font path)
+    /// * `font_paths` - Additional font directories to search
+    /// * `include_system` - Whether to include system fonts
+    fn new(root: &Path, font_paths: &[PathBuf], include_system: bool) -> Self {
+        let mut searcher = FontSearcher::new();
+        searcher.include_system_fonts(include_system);
+
+        // Build list of font paths: root first, then custom paths
+        let mut paths: Vec<&Path> = Vec::with_capacity(1 + font_paths.len());
+        paths.push(root);
+        paths.extend(font_paths.iter().map(PathBuf::as_path));
+
+        let fonts = searcher.search_with(paths);
+
+        Self {
+            book: LazyHash::new(fonts.book),
+            slots: fonts.fonts,
+        }
+    }
+
+    /// Get the font book containing metadata for all fonts.
+    fn book(&self) -> &LazyHash<FontBook> {
+        &self.book
+    }
+
+    /// Get a font by its index in the font book.
+    fn get(&self, index: usize) -> Option<Font> {
+        self.slots.get(index)?.get()
+    }
+}
+
+// ============================================================================
+// Package Manager
+// ============================================================================
+
+/// Manages package resolution and downloading.
+struct PackageManager {
+    storage: PackageStorage,
+}
+
+impl PackageManager {
+    /// Create a new package manager with default storage paths.
+    fn new() -> Self {
+        let downloader = Downloader::new(USER_AGENT);
+        let storage = PackageStorage::new(None, None, downloader);
+        Self { storage }
+    }
+
+    /// Resolve a package to its directory on disk.
+    ///
+    /// Downloads the package if not already cached.
+    fn resolve(&self, spec: &typst::syntax::package::PackageSpec) -> FileResult<PathBuf> {
+        self.storage
+            .prepare_package(spec, &mut SilentProgress)
+            .map_err(FileError::Package)
+    }
+}
+
+// ============================================================================
+// File Cache
+// ============================================================================
+
+/// Thread-safe cache for source files and binary data.
+struct FileCache {
     sources: Mutex<HashMap<FileId, Source>>,
-    /// Cache of loaded binary files.
     files: Mutex<HashMap<FileId, Bytes>>,
+}
+
+impl FileCache {
+    fn new() -> Self {
+        Self {
+            sources: Mutex::new(HashMap::new()),
+            files: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Get or insert a source file into the cache.
+    fn get_or_insert_source(
+        &self,
+        id: FileId,
+        loader: impl FnOnce() -> FileResult<Source>,
+    ) -> FileResult<Source> {
+        // Check cache first
+        if let Some(source) = self.sources.lock().get(&id) {
+            return Ok(source.clone());
+        }
+
+        // Load and cache
+        let source = loader()?;
+        self.sources.lock().insert(id, source.clone());
+        Ok(source)
+    }
+
+    /// Get or insert a binary file into the cache.
+    fn get_or_insert_file(
+        &self,
+        id: FileId,
+        loader: impl FnOnce() -> FileResult<Bytes>,
+    ) -> FileResult<Bytes> {
+        // Check cache first
+        if let Some(bytes) = self.files.lock().get(&id) {
+            return Ok(bytes.clone());
+        }
+
+        // Load and cache
+        let bytes = loader()?;
+        self.files.lock().insert(id, bytes.clone());
+        Ok(bytes)
+    }
+}
+
+impl Default for FileCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Typst World Implementation
+// ============================================================================
+
+/// A [`World`] implementation for compiling Typst files in Tola.
+///
+/// This struct provides all the context needed for typst compilation:
+/// - File resolution (local files and packages)
+/// - Font discovery and loading
+/// - Standard library access
+/// - Date/time information
+pub struct TolaWorld {
+    /// Project root directory for resolving paths
+    root: PathBuf,
+    /// Main source file identifier
+    main: FileId,
+    /// Typst standard library with HTML feature enabled
+    library: LazyHash<Library>,
+    /// Font manager for font discovery and loading
+    fonts: FontManager,
+    /// Package manager for resolving external packages
+    packages: PackageManager,
+    /// Cache for loaded files
+    cache: Arc<FileCache>,
 }
 
 impl TolaWorld {
     /// Create a new world for compiling a Typst file.
+    ///
+    /// # Arguments
+    /// * `root` - Project root directory (used for file resolution and as font path)
+    /// * `main_path` - Path to the main Typst source file
+    /// * `font_paths` - Additional directories to search for fonts
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The root or main path cannot be canonicalized
+    /// - The main file is not within the project root
     pub fn new(root: &Path, main_path: &Path, font_paths: &[PathBuf]) -> Result<Self> {
+        // Canonicalize paths for consistent resolution
         let root = root
             .canonicalize()
-            .with_context(|| format!("Failed to canonicalize root: {}", root.display()))?;
+            .with_context(|| format!("Failed to resolve project root: {}", root.display()))?;
 
         let main_path = main_path
             .canonicalize()
-            .with_context(|| format!("Failed to canonicalize main path: {}", main_path.display()))?;
+            .with_context(|| format!("Failed to resolve main file: {}", main_path.display()))?;
 
         // Resolve the virtual path of the main file within the project root
         let main_vpath = VirtualPath::within_root(&main_path, &root)
-            .with_context(|| "Main file must be within the project root")?;
+            .with_context(|| format!(
+                "Main file '{}' must be within project root '{}'",
+                main_path.display(),
+                root.display()
+            ))?;
         let main = FileId::new(None, main_vpath);
 
         // Build the library with HTML feature enabled
@@ -91,59 +274,37 @@ impl TolaWorld {
             .with_features([Feature::Html].into_iter().collect())
             .build();
 
-        // Search for fonts
-        let fonts = Self::search_fonts(font_paths, &root);
-
-        // Create package storage with default paths and a downloader
-        let downloader = Downloader::new("tola-ssg");
-        let package_storage = PackageStorage::new(None, None, downloader);
-
         Ok(Self {
+            fonts: FontManager::new(&root, font_paths, true),
+            packages: PackageManager::new(),
+            cache: Arc::new(FileCache::new()),
             root,
             main,
             library: LazyHash::new(library),
-            book: LazyHash::new(fonts.book),
-            fonts: fonts.fonts,
-            package_storage,
-            sources: Mutex::new(HashMap::new()),
-            files: Mutex::new(HashMap::new()),
         })
     }
 
-    /// Search for fonts in the specified paths and system directories.
-    fn search_fonts(font_paths: &[PathBuf], root: &Path) -> Fonts {
-        let mut searcher = FontSearcher::new();
-        searcher.include_system_fonts(true);
-
-        // Add root directory as font path
-        let mut paths: Vec<&Path> = vec![root];
-        for path in font_paths {
-            paths.push(path.as_path());
-        }
-
-        searcher.search_with(paths)
-    }
-
-    /// Read a file from the file system.
-    fn read_file(&self, id: FileId) -> FileResult<Vec<u8>> {
-        let path = self.resolve_path(id)?;
-        fs::read(&path).map_err(|e| FileError::from_io(e, &path))
-    }
-
-    /// Resolve a FileId to a file system path.
+    /// Resolve a file ID to a filesystem path.
     fn resolve_path(&self, id: FileId) -> FileResult<PathBuf> {
         // Handle package imports
         if let Some(spec) = id.package() {
-            let package_dir = self
-                .package_storage
-                .prepare_package(spec, &mut SilentProgress)?;
-            return id.vpath().resolve(&package_dir).ok_or(FileError::AccessDenied);
+            let package_dir = self.packages.resolve(spec)?;
+            return id
+                .vpath()
+                .resolve(&package_dir)
+                .ok_or(FileError::AccessDenied);
         }
 
-        // Regular file resolution
+        // Local file resolution
         id.vpath()
             .resolve(&self.root)
             .ok_or(FileError::AccessDenied)
+    }
+
+    /// Read raw bytes from a file.
+    fn read_bytes(&self, id: FileId) -> FileResult<Vec<u8>> {
+        let path = self.resolve_path(id)?;
+        fs::read(&path).map_err(|e| FileError::from_io(e, &path))
     }
 }
 
@@ -153,7 +314,7 @@ impl World for TolaWorld {
     }
 
     fn book(&self) -> &LazyHash<FontBook> {
-        &self.book
+        self.fonts.book()
     }
 
     fn main(&self) -> FileId {
@@ -161,91 +322,119 @@ impl World for TolaWorld {
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
-        // Check cache first
-        if let Some(source) = self.sources.lock().get(&id) {
-            return Ok(source.clone());
-        }
-
-        // Read and parse the file
-        let data = self.read_file(id)?;
-        let text = String::from_utf8(data).map_err(|_| FileError::InvalidUtf8)?;
-        let source = Source::new(id, text);
-
-        // Cache the source
-        self.sources.lock().insert(id, source.clone());
-
-        Ok(source)
+        self.cache.get_or_insert_source(id, || {
+            let data = self.read_bytes(id)?;
+            let text = String::from_utf8(data).map_err(|_| FileError::InvalidUtf8)?;
+            Ok(Source::new(id, text))
+        })
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
-        // Check cache first
-        if let Some(bytes) = self.files.lock().get(&id) {
-            return Ok(bytes.clone());
-        }
-
-        // Read the file
-        let data = self.read_file(id)?;
-        let bytes = Bytes::new(data);
-
-        // Cache the bytes
-        self.files.lock().insert(id, bytes.clone());
-
-        Ok(bytes)
+        self.cache.get_or_insert_file(id, || {
+            let data = self.read_bytes(id)?;
+            Ok(Bytes::new(data))
+        })
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.fonts.get(index)?.get()
+        self.fonts.get(index)
     }
 
     fn today(&self, offset: Option<i64>) -> Option<Datetime> {
-        let now = Utc::now();
-
-        let with_offset = match offset {
+        let datetime = match offset {
             None => Local::now().fixed_offset(),
             Some(hours) => {
                 let seconds = i32::try_from(hours).ok()?.checked_mul(3600)?;
-                now.with_timezone(&chrono::FixedOffset::east_opt(seconds)?)
+                let tz = chrono::FixedOffset::east_opt(seconds)?;
+                Utc::now().with_timezone(&tz)
             }
         };
 
         Datetime::from_ymd(
-            with_offset.year(),
-            with_offset.month().try_into().ok()?,
-            with_offset.day().try_into().ok()?,
+            datetime.year(),
+            datetime.month().try_into().ok()?,
+            datetime.day().try_into().ok()?,
         )
     }
 }
 
-/// Compile a Typst file to HTML using the typst library.
+// ============================================================================
+// Compilation API
+// ============================================================================
+
+/// Compile a Typst file to HTML.
+///
+/// This is the main entry point for Typst compilation. It creates a world,
+/// compiles the document, and returns the HTML as bytes.
+///
+/// # Arguments
+/// * `root` - Project root directory (used for file resolution and as font path)
+/// * `content_path` - Path to the Typst source file to compile
+/// * `font_paths` - Additional directories to search for fonts
+///
+/// # Returns
+/// The compiled HTML document as a byte vector.
+///
+/// # Errors
+/// Returns an error if:
+/// - World creation fails (invalid paths)
+/// - Compilation fails (syntax errors, missing files, etc.)
+/// - HTML encoding fails
+///
+/// # Example
+/// ```ignore
+/// let html = compile_to_html(
+///     Path::new("/project"),
+///     Path::new("/project/content/index.typ"),
+///     &[],
+/// )?;
+/// ```
 pub fn compile_to_html(root: &Path, content_path: &Path, font_paths: &[PathBuf]) -> Result<Vec<u8>> {
+    // Create the world
     let world = TolaWorld::new(root, content_path, font_paths)?;
 
     // Compile to HTML document
     let result = typst::compile::<HtmlDocument>(&world);
 
-    // Handle warnings using the project's logging framework
-    for warning in &result.warnings {
-        // Skip the standard HTML export warning
-        let msg = warning.message.to_string();
-        if !msg.contains("html export is under active development") {
-            crate::log!(true; "typst"; "warning: {}", msg);
-        }
-    }
+    // Log warnings (excluding suppressed ones)
+    log_warnings(&result.warnings);
 
-    // Handle the compilation result
+    // Handle compilation result
     match result.output {
-        Ok(document) => {
-            // Convert the HTML document to a string
-            let html = typst_html::html(&document)
-                .map_err(|errors| {
-                    let messages: Vec<_> = errors.iter().map(|e| e.message.to_string()).collect();
-                    anyhow::anyhow!("HTML encoding failed: {}", messages.join(", "))
-                })?;
-            Ok(html.into_bytes())
-        }
+        Ok(document) => encode_html(&document),
         Err(errors) => {
-            let messages: Vec<_> = errors.iter().map(|e| e.message.to_string()).collect();
-            Err(anyhow::anyhow!("Typst compilation failed:\n{}", messages.join("\n")))
+            let messages: Vec<_> = errors
+                .iter()
+                .map(|e| format!("  • {}", e.message))
+                .collect();
+            bail!("Typst compilation failed:\n{}", messages.join("\n"))
         }
     }
+}
+
+/// Log compilation warnings using the project's logging framework.
+fn log_warnings(warnings: &[typst::diag::SourceDiagnostic]) {
+    for warning in warnings {
+        let msg = warning.message.to_string();
+
+        // Skip suppressed warnings
+        if SUPPRESSED_WARNINGS.iter().any(|s| msg.contains(s)) {
+            continue;
+        }
+
+        crate::log!(true; "typst"; "warning: {}", msg);
+    }
+}
+
+/// Encode an HTML document to bytes.
+fn encode_html(document: &HtmlDocument) -> Result<Vec<u8>> {
+    typst_html::html(document)
+        .map(|html| html.into_bytes())
+        .map_err(|errors| {
+            let messages: Vec<_> = errors
+                .iter()
+                .map(|e| format!("  • {}", e.message))
+                .collect();
+            anyhow::anyhow!("HTML encoding failed:\n{}", messages.join("\n"))
+        })
 }
