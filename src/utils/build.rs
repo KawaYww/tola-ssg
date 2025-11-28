@@ -12,6 +12,7 @@ use anyhow::{Context, Result, anyhow};
 use dashmap::DashSet;
 use lru::LruCache;
 use quick_xml::{
+    name::QName,
     Reader, Writer,
     events::{BytesEnd, BytesStart, BytesText, Event, attributes::Attribute},
 };
@@ -273,16 +274,10 @@ pub fn process_content(
         }
     }
 
-    let output = run_command!(&config.build.typst.command;
-        "compile", "--features", "html", "--format", "html",
-        "--font-path", root, "--root", root,
-        content_path, "-"
-    )
-    // .with_context(|| format!("post path: {}", content_path.display()))
-?;
-
-    let html_content = output.stdout;
-    let html_content = process_html(&html_path, &html_content, config)?;
+    let raw_html_content = crate::utils::typst::compile_to_html(content_path, root)
+        .with_context(|| format!("compiling post: {:?}", content_path))?
+        .into_bytes();
+    let html_content = process_html(&html_path, &raw_html_content, config)?;
 
     let html_content = if config.build.minify {
         minify_html::minify(html_content.as_slice(), &minify_html::Cfg::new())
@@ -433,9 +428,16 @@ fn write_html_with_lang(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     config: &SiteConfig,
 ) -> Result<()> {
-    let mut elem = elem.to_owned();
-    elem.push_attribute(("lang", config.base.language.as_str()));
-    writer.write_event(Event::Start(elem))?;
+    let mut attrs: Vec<Attribute> = elem.attributes().flatten().collect();
+    attrs.retain(|attr| attr.key.as_ref() != b"lang");
+    attrs.push(Attribute {
+        key: QName(b"lang"),
+        value: config.base.language.as_bytes().into(),
+    });
+
+    let mut new_elem = BytesStart::new("html");
+    new_elem.extend_attributes(attrs);
+    writer.write_event(Event::Start(new_elem))?;
     Ok(())
 }
 
@@ -459,8 +461,10 @@ fn write_heading_with_slugified_id(
         })
         .collect();
 
-    let elem = elem.to_owned().with_attributes(attrs);
-    writer.write_event(Event::Start(elem))?;
+    let name = str::from_utf8(elem.name().as_ref())?.to_owned();
+    let mut new_elem = BytesStart::new(name);
+    new_elem.extend_attributes(attrs);
+    writer.write_event(Event::Start(new_elem))?;
     Ok(())
 }
 
@@ -483,8 +487,12 @@ fn write_element_with_processed_links(
         })
         .collect();
 
-    let elem = elem.to_owned().with_attributes(attrs?);
-    writer.write_event(Event::Start(elem))?;
+    let attrs = attrs?;
+
+    let name = str::from_utf8(elem.name().as_ref())?.to_owned();
+    let mut new_elem = BytesStart::new(name);
+    new_elem.extend_attributes(attrs);
+    writer.write_event(Event::Start(new_elem))?;
     Ok(())
 }
 
