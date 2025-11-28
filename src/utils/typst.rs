@@ -1,7 +1,27 @@
 //! Typst library integration for compiling Typst files to HTML.
 //!
-//! This module provides a World implementation and compilation utilities
+//! This module provides a `World` implementation and compilation utilities
 //! that replace the external typst CLI with direct library usage.
+//!
+//! # Font Discovery
+//! - Fonts are discovered from the system font directories and from the provided root directory.
+//! - Additional font paths can be specified via the `font_paths` argument to `compile_to_html`.
+//! - The font book is built from all discovered fonts at startup.
+//!
+//! # Feature Support vs. Typst CLI
+//! - Supports compiling Typst source files to HTML using the Typst library.
+//! - Standard library features are available.
+//! - Supports Typst packages from the official registry (e.g., `#import "@preview/package:version"`).
+//! - Only HTML output is supported; other output formats (PDF, PNG, etc.) are not implemented here.
+//!
+//! # Known Limitations
+//! - Only local file system sources and official registry packages are supported.
+//! - Some CLI features (e.g., watch mode, incremental compilation) are not available.
+//!
+//! # Error Handling
+//! - Compilation errors and warnings are collected and returned as part of the result.
+//! - Warnings are logged using the project's logging framework (except for known, ignorable warnings).
+//! - On failure, errors are returned as `anyhow::Error` with detailed messages.
 
 use std::collections::HashMap;
 use std::fs;
@@ -10,14 +30,25 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use chrono::{Datelike, Local, Utc};
 use parking_lot::Mutex;
-use typst::diag::{FileError, FileResult, PackageError};
+use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime};
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Feature, Library, LibraryExt, World};
 use typst_html::HtmlDocument;
+use typst_kit::download::{Downloader, Progress, DownloadState};
 use typst_kit::fonts::{FontSearcher, FontSlot, Fonts};
+use typst_kit::package::PackageStorage;
+
+/// A no-op progress reporter for package downloads.
+struct SilentProgress;
+
+impl Progress for SilentProgress {
+    fn print_start(&mut self) {}
+    fn print_progress(&mut self, _: &DownloadState) {}
+    fn print_finish(&mut self, _: &DownloadState) {}
+}
 
 /// A World implementation for compiling Typst files.
 pub struct TolaWorld {
@@ -31,6 +62,8 @@ pub struct TolaWorld {
     book: LazyHash<FontBook>,
     /// Font slots for lazy loading.
     fonts: Vec<FontSlot>,
+    /// Package storage for downloading and caching packages.
+    package_storage: PackageStorage,
     /// Cache of loaded source files.
     sources: Mutex<HashMap<FileId, Source>>,
     /// Cache of loaded binary files.
@@ -61,12 +94,17 @@ impl TolaWorld {
         // Search for fonts
         let fonts = Self::search_fonts(font_paths, &root);
 
+        // Create package storage with default paths and a downloader
+        let downloader = Downloader::new("tola-ssg");
+        let package_storage = PackageStorage::new(None, None, downloader);
+
         Ok(Self {
             root,
             main,
             library: LazyHash::new(library),
             book: LazyHash::new(fonts.book),
             fonts: fonts.fonts,
+            package_storage,
             sources: Mutex::new(HashMap::new()),
             files: Mutex::new(HashMap::new()),
         })
@@ -94,13 +132,15 @@ impl TolaWorld {
 
     /// Resolve a FileId to a file system path.
     fn resolve_path(&self, id: FileId) -> FileResult<PathBuf> {
-        // For now, we don't support packages
-        if id.package().is_some() {
-            return Err(FileError::Package(PackageError::Other(Some(
-                ecow::eco_format!("packages are not supported"),
-            ))));
+        // Handle package imports
+        if let Some(spec) = id.package() {
+            let package_dir = self
+                .package_storage
+                .prepare_package(spec, &mut SilentProgress)?;
+            return id.vpath().resolve(&package_dir).ok_or(FileError::AccessDenied);
         }
 
+        // Regular file resolution
         id.vpath()
             .resolve(&self.root)
             .ok_or(FileError::AccessDenied)
@@ -183,12 +223,12 @@ pub fn compile_to_html(root: &Path, content_path: &Path, font_paths: &[PathBuf])
     // Compile to HTML document
     let result = typst::compile::<HtmlDocument>(&world);
 
-    // Handle warnings (just log them for now)
+    // Handle warnings using the project's logging framework
     for warning in &result.warnings {
         // Skip the standard HTML export warning
         let msg = warning.message.to_string();
         if !msg.contains("html export is under active development") {
-            eprintln!("typst warning: {}", msg);
+            crate::log!(true; "typst"; "warning: {}", msg);
         }
     }
 

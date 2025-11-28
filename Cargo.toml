@@ -75,7 +75,7 @@ portable-pty = "0.9.0"
 # Typst library dependencies for compilation
 typst = "0.14.0"
 typst-html = "0.14.0"
-typst-kit = { version = "0.14.0", features = ["fonts"] }
+typst-kit = { version = "0.14.0", features = ["fonts", "packages"] }
 comemo = "0.5.0"
 ecow = "0.2.0"
 parking_lot = "0.12.1"
