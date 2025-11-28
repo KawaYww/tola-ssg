@@ -4,6 +4,7 @@
 
 use crate::{config::SiteConfig, utils::git};
 use anyhow::{Context, Result, bail};
+use inquire::{Text, validator::Validation};
 use std::{fs, path::Path};
 
 /// Files to write ignore patterns to
@@ -24,22 +25,100 @@ const SITE_DIRS: &[&str] = &[
     "utils",
 ];
 
+/// User input collected from interactive prompts
+struct SiteInfo {
+    title: String,
+    description: String,
+    author: String,
+    email: String,
+    url: Option<String>,
+}
+
+/// Validator for required fields that cannot be empty
+fn required_validator(input: &str) -> Result<Validation, inquire::CustomUserError> {
+    if input.trim().is_empty() {
+        Ok(Validation::Invalid("This field cannot be empty".into()))
+    } else {
+        Ok(Validation::Valid)
+    }
+}
+
+/// Run interactive prompts to collect site information
+fn prompt_site_info() -> Result<SiteInfo> {
+    let defaults = SiteConfig::default();
+
+    let title = Text::new("Site title:")
+        .with_help_message("The title of your site")
+        .with_validator(required_validator)
+        .prompt()?
+        .trim()
+        .to_string();
+
+    let description = Text::new("Site description:")
+        .with_help_message("A brief description of your site")
+        .with_validator(required_validator)
+        .prompt()?
+        .trim()
+        .to_string();
+
+    let author = Text::new("Author name:")
+        .with_help_message("Your name")
+        .with_default(&defaults.base.author)
+        .prompt()?;
+
+    let email = Text::new("Author email:")
+        .with_help_message("Your email address")
+        .with_default(&defaults.base.email)
+        .prompt()?;
+
+    let url = Text::new("Base URL (optional):")
+        .with_help_message("Your site's base URL (e.g., https://example.com)")
+        .with_validator(|input: &str| {
+            if input.is_empty()
+                || input.starts_with("http://")
+                || input.starts_with("https://")
+            {
+                Ok(Validation::Valid)
+            } else {
+                Ok(Validation::Invalid("URL must start with http:// or https://".into()))
+            }
+        })
+        .prompt()?;
+
+    Ok(SiteInfo {
+        title,
+        description,
+        author,
+        email,
+        url: if url.trim().is_empty() { None } else { Some(url.trim().to_string()) },
+    })
+}
+
 /// Create a new site with default structure
 pub fn new_site(config: &'static SiteConfig) -> Result<()> {
     let root = config.get_root();
 
+    let site_info = prompt_site_info()?;
+
     let repo = git::create_repo(root)?;
     init_site_structure(root)?;
-    init_default_config(root)?;
+    init_config_with_info(root, site_info)?;
     init_ignored_files(root, &[config.build.output.as_path(), Path::new("/assets/images/")])?;
     git::commit_all(&repo, "initial commit")?;
 
     Ok(())
 }
 
-/// Write default configuration file
-fn init_default_config(root: &Path) -> Result<()> {
-    let content = toml::to_string_pretty(&SiteConfig::default())?;
+/// Write configuration file with user-provided information
+fn init_config_with_info(root: &Path, info: SiteInfo) -> Result<()> {
+    let mut site_config = SiteConfig::default();
+    site_config.base.title = info.title;
+    site_config.base.description = info.description;
+    site_config.base.author = info.author;
+    site_config.base.email = info.email;
+    site_config.base.url = info.url;
+
+    let content = toml::to_string_pretty(&site_config)?;
     fs::write(root.join(CONFIG_FILE), content)?;
     Ok(())
 }
