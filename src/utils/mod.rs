@@ -6,4 +6,5 @@ pub mod git;
 pub mod log;
 pub mod rss;
 pub mod slug;
+pub mod typst;
 pub mod watch;
